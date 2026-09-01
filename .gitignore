@@ -1,0 +1,19 @@
+.venv/
+dist/
+build/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+pytest-of-root/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+
+# HexaHarness runtime evidence can contain local paths and command output.
+.hexaharness/artifacts/
+.hexaharness/events/
+.hexaharness/proposals/
+.hexaharness/state/
+.hexaharness/STOP

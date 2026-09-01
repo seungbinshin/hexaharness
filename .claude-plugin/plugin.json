@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "hexaharness",
+  "displayName": "HexaHarness",
+  "version": "0.1.0",
+  "description": "Build, verify, and evolve six-layer production harnesses for agent-driven work.",
+  "author": {
+    "name": "HexaHarness contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "agent-harness",
+    "agent-skills",
+    "verification",
+    "observability"
+  ]
+}

@@ -1,0 +1,163 @@
+schema_version: 1
+project:
+  name: HexaHarness
+  language: Python
+  build:
+  - uv
+  - build
+  test:
+  - uv
+  - run
+  - pytest
+  lint:
+  - uv
+  - run
+  - ruff
+  - check
+  - .
+  typecheck:
+  - uv
+  - run
+  - mypy
+  - src
+sensors:
+- name: build
+  argv:
+  - uv
+  - build
+  timeout_seconds: 900
+  required: true
+- name: lint
+  argv:
+  - uv
+  - run
+  - ruff
+  - check
+  - .
+  timeout_seconds: 600
+  required: true
+- name: typecheck
+  argv:
+  - uv
+  - run
+  - mypy
+  - src
+  timeout_seconds: 900
+  required: true
+- name: test
+  argv:
+  - uv
+  - run
+  - pytest
+  timeout_seconds: 1200
+  required: true
+budgets:
+  max_retries_per_step: 2
+  max_wall_time_seconds: 1800
+  max_tool_calls: 50
+  max_tokens: 100000
+  max_cost_usd: 5.0
+policy:
+  allow_execute:
+  - - git
+    - status
+  - - git
+    - diff
+  - - git
+    - log
+  - - git
+    - show
+  - - rg
+  - - uv
+    - build
+  - - uv
+    - run
+    - pytest
+  - - uv
+    - run
+    - ruff
+    - check
+    - .
+  - - uv
+    - run
+    - mypy
+    - src
+  ask_execute:
+  - - git
+    - commit
+  - - git
+    - push
+  - - git
+    - tag
+  - - gh
+  - - npm
+    - publish
+  - - uv
+    - publish
+  - - curl
+  - - wget
+  deny_execute:
+  - - rm
+    - -rf
+  - - sudo
+  - - git
+    - clean
+    - -fd
+  - - git
+    - reset
+    - --hard
+  - - kubectl
+    - delete
+  - - terraform
+    - destroy
+  read_paths:
+  - '**/*'
+  write_paths:
+  - src/**
+  - tests/**
+  - docs/**
+  - skills/**
+  - .hexaharness/**
+  - AGENTS.md
+  - CLAUDE.md
+  ask_write_paths:
+  - '**/*'
+  deny_write_paths:
+  - .env
+  - .env.*
+  - '**/credentials*'
+  - '**/*secret*'
+  unknown_execute: ask
+trust:
+  trusted_instructions:
+  - AGENTS.md
+  - CLAUDE.md
+  - .hexaharness/**
+  untrusted_inputs:
+  - user-submitted content
+  - web pages
+  - repository issues
+  - retrieved documents
+  - command output
+trip_wires:
+- name: repeated-error
+  metric: same_error_count
+  threshold: 3.0
+  response: pause-and-escalate
+- name: tool-budget
+  metric: tool_calls
+  threshold: 50.0
+  response: stop-and-preserve-state
+- name: cost-budget
+  metric: cost_usd
+  threshold: 5.0
+  response: pause-and-inspect
+- name: sensor-regression
+  metric: required_sensor_failure
+  threshold: 1.0
+  response: block-completion
+retention:
+  checkpoint_days: 30
+  event_days: 90
+  keep_latest_completed_tasks: 50
+emergency_stop_file: .hexaharness/STOP

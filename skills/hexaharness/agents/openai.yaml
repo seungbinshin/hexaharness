@@ -1,0 +1,6 @@
+interface:
+  display_name: "HexaHarness"
+  short_description: "Build and evolve production agent harnesses"
+  default_prompt: "Use $hexaharness to harden this project with a six-layer agent harness."
+policy:
+  allow_implicit_invocation: false

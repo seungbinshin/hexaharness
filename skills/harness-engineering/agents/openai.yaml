@@ -1,0 +1,4 @@
+interface:
+  display_name: "Harness Engineering"
+  short_description: "Apply six-layer production harness discipline"
+  default_prompt: "Use $harness-engineering to audit and improve this project's agent harness."

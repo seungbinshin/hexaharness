@@ -1,0 +1,34 @@
+{
+  "name": "hexaharness",
+  "version": "0.1.0",
+  "description": "Build, verify, and evolve six-layer production harnesses for agent-driven work.",
+  "author": {
+    "name": "HexaHarness contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "agent-harness",
+    "agent-skills",
+    "codex",
+    "claude-code",
+    "verification"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "HexaHarness",
+    "shortDescription": "Production harness discipline for agent work",
+    "longDescription": "A thin skill layer and deterministic CLI for guides, sensors, bounded execution, checkpoints, permissions, and observability.",
+    "developerName": "HexaHarness contributors",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Harden this repository with HexaHarness.",
+      "Audit this project's agent harness.",
+      "Turn this failure into a permanent harness fix."
+    ],
+    "brandColor": "#5B4BDB"
+  }
+}
