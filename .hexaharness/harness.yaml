@@ -1,7 +1,7 @@
-schema_version: 1
+schema_version: 2
 project:
   name: HexaHarness
-  language: Python
+  language: Python 3.12+
   build:
   - uv
   - build
@@ -20,6 +20,7 @@ project:
   - run
   - mypy
   - src
+  - skills/hexaharness/scripts/hexa.py
 sensors:
 - name: build
   argv:
@@ -42,6 +43,7 @@ sensors:
   - run
   - mypy
   - src
+  - skills/hexaharness/scripts/hexa.py
   timeout_seconds: 900
   required: true
 - name: test
@@ -67,7 +69,117 @@ policy:
     - log
   - - git
     - show
+  - - git
+    - add
+  - - git
+    - commit
+  - - git
+    - tag
+  - - git
+    - branch
   - - rg
+  - - gh
+    - --version
+  - - gh
+    - auth
+    - status
+  - - gh
+    - help
+  - - gh
+    - status
+  - - gh
+    - issue
+    - list
+  - - gh
+    - issue
+    - status
+  - - gh
+    - issue
+    - view
+  - - gh
+    - pr
+    - checks
+  - - gh
+    - pr
+    - diff
+  - - gh
+    - pr
+    - list
+  - - gh
+    - pr
+    - status
+  - - gh
+    - pr
+    - view
+  - - gh
+    - release
+    - list
+  - - gh
+    - release
+    - view
+  - - gh
+    - repo
+    - list
+  - - gh
+    - repo
+    - view
+  - - gh
+    - run
+    - list
+  - - gh
+    - run
+    - view
+  - - gh
+    - workflow
+    - list
+  - - gh
+    - workflow
+    - view
+  - - uv
+    - sync
+  - - uv
+    - lock
+  - - uv
+    - add
+  - - uv
+    - remove
+  - - pytest
+  - - ruff
+  - - mypy
+  - - npm
+    - install
+  - - npm
+    - ci
+  - - pnpm
+    - install
+  - - pnpm
+    - add
+  - - pnpm
+    - remove
+  - - yarn
+    - install
+  - - yarn
+    - add
+  - - yarn
+    - remove
+  - - cargo
+    - add
+  - - cargo
+    - remove
+  - - cargo
+    - update
+  - - cargo
+    - fmt
+  - - go
+    - get
+  - - go
+    - mod
+    - download
+  - - go
+    - mod
+    - tidy
+  - - go
+    - fmt
   - - uv
     - build
   - - uv
@@ -82,17 +194,45 @@ policy:
     - run
     - mypy
     - src
+    - skills/hexaharness/scripts/hexa.py
   ask_execute:
   - - git
     - commit
+    - --amend
   - - git
-    - push
+    - branch
+    - -d
+  - - git
+    - branch
+    - -D
+  - - git
+    - branch
+    - --delete
   - - git
     - tag
-  - - gh
+    - -d
+  - - git
+    - tag
+    - --delete
+  - - git
+    - tag
+    - -f
+  - - git
+    - push
   - - npm
     - publish
+  - - npm
+    - unpublish
+  - - npm
+    - deprecate
+  - - pnpm
+    - publish
+  - - yarn
+    - npm
+    - publish
   - - uv
+    - publish
+  - - cargo
     - publish
   - - curl
   - - wget
@@ -113,20 +253,19 @@ policy:
   read_paths:
   - '**/*'
   write_paths:
-  - src/**
-  - tests/**
-  - docs/**
-  - skills/**
-  - .hexaharness/**
-  - AGENTS.md
-  - CLAUDE.md
-  ask_write_paths:
+  - '*'
   - '**/*'
+  ask_write_paths: []
   deny_write_paths:
   - .env
   - .env.*
+  - '**/.env'
+  - '**/.env.*'
+  - '*credentials*'
   - '**/credentials*'
+  - '*secret*'
   - '**/*secret*'
+  - .git/**
   unknown_execute: ask
 trust:
   trusted_instructions:

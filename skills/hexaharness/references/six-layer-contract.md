@@ -9,7 +9,7 @@ Read this reference when initializing, redesigning, or explaining an audit findi
 | Agentic loop | Plan, execute, verify, fix, and escalate within finite bounds | task checkpoint, attempt count, escalation packet |
 | Memory | Work survives restart without repeating completed steps | `.hexaharness/state/<task>.json` and artifact paths |
 | Permissions | Scope, rate, reversibility, and visibility are explicit | allow/ask/deny policy decisions and approval events |
-| Observability | Actions, results, costs, approvals, and trip wires are traceable | `.hexaharness/events/*.jsonl` and `hexa audit` |
+| Observability | Actions, results, costs, approvals, and trip wires are traceable | `.hexaharness/events/*.jsonl` and `<HEXA> audit` |
 
 ## Production-readiness evidence
 

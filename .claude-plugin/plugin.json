@@ -2,11 +2,14 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "hexaharness",
   "displayName": "HexaHarness",
-  "version": "0.1.0",
-  "description": "Build, verify, and evolve six-layer production harnesses for agent-driven work.",
+  "version": "0.2.0",
+  "description": "Let Claude design, implement, verify, and maintain projects through a six-layer production harness.",
   "author": {
-    "name": "HexaHarness contributors"
+    "name": "seungbinshin",
+    "url": "https://github.com/seungbinshin"
   },
+  "homepage": "https://github.com/seungbinshin/hexaharness#readme",
+  "repository": "https://github.com/seungbinshin/hexaharness",
   "license": "MIT",
   "keywords": [
     "agent-harness",

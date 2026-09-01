@@ -63,8 +63,10 @@ class CommandSpec(BaseModel):
     @field_validator("argv")
     @classmethod
     def validate_argv(cls, value: list[str]) -> list[str]:
-        if any(not part or "\x00" in part for part in value):
-            raise ValueError("command arguments must be non-empty and cannot contain NUL bytes")
+        if any(not part.strip() or "\x00" in part for part in value):
+            raise ValueError(
+                "command arguments must contain non-whitespace text and cannot contain NUL bytes"
+            )
         return value
 
 
@@ -77,6 +79,23 @@ class ProjectConfig(BaseModel):
     test: list[str] = Field(min_length=1)
     lint: list[str] = Field(min_length=1)
     typecheck: list[str] | None = None
+
+    @field_validator("name", "language")
+    @classmethod
+    def validate_nonblank_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("project name and language must contain non-whitespace text")
+        return stripped
+
+    @field_validator("build", "test", "lint", "typecheck")
+    @classmethod
+    def validate_project_commands(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None and any(not part.strip() or "\x00" in part for part in value):
+            raise ValueError(
+                "command arguments must contain non-whitespace text and cannot contain NUL bytes"
+            )
+        return value
 
 
 class BudgetConfig(BaseModel):
@@ -102,6 +121,15 @@ class PolicyConfig(BaseModel):
         default_factory=lambda: [".env", ".env.*", "**/credentials*", "**/*secret*"]
     )
     unknown_execute: PolicyDecision = PolicyDecision.ASK
+
+    @field_validator("allow_execute", "ask_execute", "deny_execute")
+    @classmethod
+    def validate_command_prefixes(cls, value: list[list[str]]) -> list[list[str]]:
+        if any(
+            not prefix or any(not part or "\x00" in part for part in prefix) for prefix in value
+        ):
+            raise ValueError("command prefixes must contain non-empty arguments without NUL bytes")
+        return value
 
 
 class TrustConfig(BaseModel):
@@ -129,6 +157,41 @@ class TripWireSpec(BaseModel):
     threshold: float = Field(gt=0)
     response: str
 
+    @field_validator("name")
+    @classmethod
+    def validate_trip_wire_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("trip-wire names must contain non-whitespace text")
+        return value.strip()
+
+    @field_validator("metric")
+    @classmethod
+    def validate_trip_wire_metric(cls, value: str) -> str:
+        supported = {
+            "cost_usd",
+            "required_sensor_failure",
+            "same_error_count",
+            "tokens_used",
+            "tool_calls",
+            "wall_time_seconds",
+        }
+        if value not in supported:
+            raise ValueError(f"unsupported trip-wire metric: {value}")
+        return value
+
+    @field_validator("response")
+    @classmethod
+    def validate_trip_wire_response(cls, value: str) -> str:
+        supported = {
+            "block-completion",
+            "pause-and-escalate",
+            "pause-and-inspect",
+            "stop-and-preserve-state",
+        }
+        if value not in supported:
+            raise ValueError(f"unsupported trip-wire response: {value}")
+        return value
+
 
 class RetentionConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -141,7 +204,7 @@ class RetentionConfig(BaseModel):
 class HarnessConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: int = Field(default=1, ge=1)
+    schema_version: int = Field(default=2, ge=1)
     project: ProjectConfig
     sensors: list[CommandSpec]
     budgets: BudgetConfig = Field(default_factory=BudgetConfig)
@@ -170,6 +233,38 @@ class SensorResult(BaseModel):
     output_path: str
     summary: str
     timed_out: bool = False
+    stopped: bool = False
+    task_id: str | None = None
+    config_fingerprint: str | None = None
+    guidance_fingerprint: str | None = None
+    output_sha256: str | None = None
+    recorded_at: datetime = Field(default_factory=utc_now)
+
+
+class ArtifactEvidence(BaseModel):
+    """A task-scoped, content-addressed observation of a project artifact."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    task_id: str
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    size_bytes: int = Field(ge=0)
+    modified_at_ns: int = Field(ge=0)
+    write_observation_id: str | None = None
+    recorded_at: datetime = Field(default_factory=utc_now)
+
+
+class WriteObservation(BaseModel):
+    """A task-scoped snapshot captured before a policy-authorized project write."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    observation_id: str = Field(min_length=1)
+    task_id: str
+    path: str = Field(min_length=1)
+    before_exists: bool
+    before_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     recorded_at: datetime = Field(default_factory=utc_now)
 
 
@@ -185,7 +280,12 @@ class TaskState(BaseModel):
     ended_at: datetime | None = None
     completed_steps: list[str] = Field(default_factory=list)
     next_step: str | None = None
+    external_action_phase_started_at: datetime | None = None
+    external_action_nonces: list[str] = Field(default_factory=list)
     artifacts: list[str] = Field(default_factory=list)
+    artifact_evidence: list[ArtifactEvidence] = Field(default_factory=list)
+    write_observations: list[WriteObservation] = Field(default_factory=list)
+    guidance_fingerprint: str | None = None
     tool_calls: int = Field(default=0, ge=0)
     attempts: int = Field(default=0, ge=0)
     tokens_used: int = Field(default=0, ge=0)
@@ -206,6 +306,7 @@ class CommandResult(BaseModel):
     output_path: str | None
     summary: str
     timed_out: bool = False
+    stopped: bool = False
 
 
 class Event(BaseModel):
@@ -222,11 +323,23 @@ class GuideRule(BaseModel):
 
     rule_id: str
     created_at: datetime = Field(default_factory=utc_now)
+    task_id: str | None = None
+    evidence_paths: list[str] = Field(default_factory=list)
+    evidence_digests: dict[str, str] = Field(default_factory=dict)
+    source_failure_events: list[str] = Field(default_factory=list)
     failure_class: FailureClass
     failure_summary: str
     rule: str
     verification: str
     active: bool = True
+
+    @field_validator("failure_summary", "rule", "verification")
+    @classmethod
+    def validate_nonblank_rule_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("guide rule text must contain non-whitespace text")
+        return stripped
 
 
 class LearningRecord(BaseModel):
@@ -235,12 +348,23 @@ class LearningRecord(BaseModel):
     learning_id: str
     created_at: datetime = Field(default_factory=utc_now)
     task_id: str | None = None
+    evidence_paths: list[str] = Field(default_factory=list)
+    evidence_digests: dict[str, str] = Field(default_factory=dict)
+    source_failure_events: list[str] = Field(default_factory=list)
     failure_class: FailureClass
     failure_summary: str
     target_layer: HarnessLayer
     proposed_fix: str
     verification: str
     guide_rule_id: str | None = None
+
+    @field_validator("failure_summary", "proposed_fix", "verification")
+    @classmethod
+    def validate_nonblank_learning_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("learning record text must contain non-whitespace text")
+        return stripped
 
 
 class AuditCheck(BaseModel):
@@ -263,4 +387,5 @@ class EscalationPacket(BaseModel):
     recommended_action: str
     alternatives_tested: list[str] = Field(default_factory=list)
     safest_default: str
+    cost_of_waiting: str = "The task remains blocked until the requested decision is made."
     evidence_paths: list[str] = Field(default_factory=list)

@@ -23,33 +23,46 @@ def active_trip_wires(
     state: TaskState,
     *,
     error_fingerprint: str | None = None,
+    required_sensor_failures: int = 0,
 ) -> list[str]:
-    active: list[str] = []
+    active: dict[str, str] = {}
     elapsed = (datetime.now(UTC) - state.started_at).total_seconds()
     if state.tool_calls >= config.budgets.max_tool_calls:
-        active.append("tool-budget")
-    if state.cost_usd >= config.budgets.max_cost_usd and config.budgets.max_cost_usd > 0:
-        active.append("cost-budget")
+        active["tool-budget"] = "stop-and-preserve-state"
+    cost_limit_reached = (
+        state.cost_usd > 0
+        if config.budgets.max_cost_usd == 0
+        else state.cost_usd >= config.budgets.max_cost_usd
+    )
+    if cost_limit_reached:
+        active["cost-budget"] = "pause-and-inspect"
     if state.tokens_used >= config.budgets.max_tokens:
-        active.append("token-budget")
+        active["token-budget"] = "stop-and-preserve-state"
     if elapsed >= config.budgets.max_wall_time_seconds:
-        active.append("wall-time-budget")
-    if error_fingerprint:
-        threshold = next(
-            (
-                int(item.threshold)
-                for item in config.trip_wires
-                if item.metric == "same_error_count"
-            ),
-            3,
-        )
-        if repeated_error_count(project_root, state.task_id, error_fingerprint) >= threshold:
-            active.append("repeated-error")
-    for name in active:
+        active["wall-time-budget"] = "stop-and-preserve-state"
+
+    for specification in config.trip_wires:
+        observed: float | None = None
+        if specification.metric == "tool_calls":
+            observed = float(state.tool_calls)
+        elif specification.metric == "cost_usd":
+            observed = state.cost_usd
+        elif specification.metric == "tokens_used":
+            observed = float(state.tokens_used)
+        elif specification.metric == "wall_time_seconds":
+            observed = elapsed
+        elif specification.metric == "same_error_count" and error_fingerprint:
+            observed = float(repeated_error_count(project_root, state.task_id, error_fingerprint))
+        elif specification.metric == "required_sensor_failure":
+            observed = float(required_sensor_failures)
+        if observed is not None and observed >= specification.threshold:
+            active.setdefault(specification.name, specification.response)
+
+    for name, response in active.items():
         record_event(
             project_root,
             "trip-wire.fired",
             task_id=state.task_id,
-            payload={"name": name},
+            payload={"name": name, "response": response},
         )
-    return active
+    return list(active)

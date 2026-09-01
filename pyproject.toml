@@ -1,6 +1,6 @@
 [project]
 name = "hexaharness"
-version = "0.1.0"
+version = "0.2.0"
 description = "A host-neutral, six-layer production harness for agent-driven work."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -37,6 +37,7 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+  "hatchling>=1.27,<2",
   "mypy>=1.15,<2",
   "pytest>=8.3,<10",
   "pytest-cov>=6,<8",
@@ -49,6 +50,47 @@ default-groups = ["dev"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hexaharness"]
+
+[tool.hatch.build.targets.sdist]
+only-include = [
+  ".agents",
+  ".claude-plugin",
+  ".codex-plugin",
+  ".github",
+  ".hexaharness/GUIDES.md",
+  ".hexaharness/decisions.jsonl",
+  ".hexaharness/guide-rules.yaml",
+  ".hexaharness/harness.yaml",
+  ".gitignore",
+  ".python-version",
+  "AGENTS.md",
+  "CHANGELOG.md",
+  "CLAUDE.md",
+  "CONTRIBUTING.md",
+  "LICENSE",
+  "README.md",
+  "README.ko.md",
+  "SECURITY.md",
+  "docs",
+  "pyproject.toml",
+  "runtime-requirements.txt",
+  "skills",
+  "src",
+  "tests",
+  "uv.lock",
+]
+exclude = [
+  "/.hexaharness/STOP",
+  "/.hexaharness/artifacts",
+  "/.hexaharness/events",
+  "/.hexaharness/external-action.key",
+  "/.hexaharness/proposals",
+  "/.hexaharness/runtime",
+  "/.hexaharness/state",
+  "/build",
+  "/dist",
+  "/tmp*.tar.gz",
+]
 
 [tool.ruff]
 line-length = 100

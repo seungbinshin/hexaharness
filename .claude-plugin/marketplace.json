@@ -1,0 +1,20 @@
+{
+  "name": "hexaharness",
+  "owner": {
+    "name": "seungbinshin"
+  },
+  "plugins": [
+    {
+      "name": "hexaharness",
+      "source": {
+        "source": "github",
+        "repo": "seungbinshin/hexaharness"
+      },
+      "description": "Agent-first project delivery with a self-bootstrapping deterministic runtime.",
+      "version": "0.2.0",
+      "author": {
+        "name": "seungbinshin"
+      }
+    }
+  ]
+}

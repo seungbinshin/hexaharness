@@ -1,0 +1,20 @@
+{
+  "name": "hexaharness",
+  "interface": {
+    "displayName": "HexaHarness"
+  },
+  "plugins": [
+    {
+      "name": "hexaharness",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/seungbinshin/hexaharness.git"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

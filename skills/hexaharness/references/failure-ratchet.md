@@ -21,9 +21,10 @@ Read this reference after an observed failure or repeated review correction.
 | `unsafe-action` | Permission | Deny rule, approval gate, or environment constraint |
 | `cost-overrun` | Observability | Finite budget and aggregate trip wire |
 
-Use `hexa learn --class ... --summary ... --fix ... --verification ...`. Non-guide corrections are
-stored as proposals because changing sensors or policy requires review. A guide correction can be
-applied with `--layer guide --guide-rule "..."`; it is dated and linked to the observed failure.
+Use `<HEXA> learn --task-id <task-id> --evidence <artifact> --class ... --summary ... --fix ...
+--verification ...`. Non-guide corrections are stored as proposals because changing sensors or
+policy requires review. A guide correction can be applied with `--layer guide --guide-rule "..."`;
+it is dated and linked to the source task and retained failure evidence.
 
 Do not use a guide reminder when a deterministic sensor or permission boundary can prevent the
 entire failure class. Do not add a universal rule from a one-off preference or speculative edge case.

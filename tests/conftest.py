@@ -28,11 +28,21 @@ def harness_project(tmp_path: Path) -> Path:
     )
     config.sensors = [CommandSpec(name="test", argv=passing, timeout_seconds=10, required=True)]
     config.policy = PolicyConfig(
-        allow_execute=[[sys.executable]],
+        allow_execute=[passing],
         ask_execute=[["git", "push"]],
         deny_execute=[["rm", "-rf"]],
         write_paths=["src/**", ".hexaharness/**"],
         ask_write_paths=["**/*"],
     )
     save_config(tmp_path, config)
+    initialize_project(
+        tmp_path,
+        project_name="sample",
+        project_language="Python",
+        build=passing,
+        test=passing,
+        lint=passing,
+        typecheck=passing,
+        force=True,
+    )
     return tmp_path

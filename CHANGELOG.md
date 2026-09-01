@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.2.0 - 2026-09-01
+
+- Made the primary skill implicitly invocable for software project design, implementation,
+  verification, and maintenance.
+- Moved the six-layer companion discipline under the primary skill so Codex and Claude expose one
+  consistent automatic entrypoint.
+- Added a plugin-bundled launcher that prepares and reuses a private, version-locked CLI runtime.
+- Changed the default autonomy boundary so project-local reversible work is allowed while external
+  publication and destructive operations remain human-gated; unregistered local commands now have
+  a separate, auditable agent-review boundary.
+- Made empty-repository initialization design-first, rejected placeholder verification commands,
+  and made forced refresh preserve learned evidence while updating managed project guidance.
+- Added concurrent checkpoint protection, crash-safe one-time task- and phase-bound external
+  actions, in-flight emergency stop handling, artifact and guidance fingerprints, and
+  evidence-aware audits.
+- Bound completion to task-scoped pre-write content deltas, de-duplicated unattended artifact
+  claims, and bound concurrent failure learning to stable runtime evidence.
+- Rejected stale in-memory configuration at execution and completion boundaries, required
+  phase-fresh evidence for external-action verification, and added a nonce-retiring cancellation
+  path when a user declines an unexecuted action.
+- Closed subprocess, local dependency locator, Git global-option, multicall, and inline-interpreter
+  policy bypasses; made secret redaction command-context aware across flags, headers, URLs,
+  environment values, and nested JSON.
+- Human-gated cloud and infrastructure operations unless proven read-only, preserved those gates
+  through transparent and opaque command wrappers, blocked staged-action policy drift, and made
+  source distributions exclude build-time temporary archives and local runtime evidence.
+- Added installable Codex and Claude Code marketplace manifests and an agent-first Korean README.
+
 ## 0.1.0 - 2026-09-01
 
 - Added the deterministic `hexa` CLI and six-layer project scaffold.

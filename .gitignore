@@ -15,5 +15,7 @@ coverage.xml
 .hexaharness/artifacts/
 .hexaharness/events/
 .hexaharness/proposals/
+.hexaharness/runtime/
 .hexaharness/state/
 .hexaharness/STOP
+.hexaharness/external-action.key
