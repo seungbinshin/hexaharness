@@ -1,19 +1,27 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from pathlib import Path
 
 from hexaharness.config import ensure_configuration_current, ensure_configuration_ready
 from hexaharness.errors import HarnessStoppedError, PolicyBlockedError
 from hexaharness.events import record_event
 from hexaharness.execution import execute_capture
-from hexaharness.models import CommandSpec, HarnessConfig, PolicyDecision, SensorResult
+from hexaharness.models import CommandSpec, HarnessConfig, PolicyDecision, SensorResult, TaskStatus
 from hexaharness.paths import HarnessPaths
 from hexaharness.policy import evaluate_command
+from hexaharness.runner import execution_time_remaining
 from hexaharness.state import (
     capture_artifact_evidence,
     configuration_fingerprint,
     configuration_lock,
     guidance_fingerprint,
+    is_external_action_marker,
+    load_task,
+    record_sensor_results,
+    save_task,
+    set_task_status,
+    task_lock,
 )
 
 
@@ -48,6 +56,14 @@ def _run_sensors_locked(
             raise HarnessStoppedError(
                 "emergency stop became active; remaining sensors were cancelled"
             )
+        state = load_task(project_root, task_id) if task_id else None
+        timeout = sensor.timeout_seconds
+        if state is not None:
+            if state.status != TaskStatus.ACTIVE or is_external_action_marker(state.next_step):
+                raise PolicyBlockedError(
+                    "sensors require an active task with no pending external action"
+                )
+            timeout = min(timeout, execution_time_remaining(project_root, config, state))
         outcome = evaluate_command(config, sensor.argv, project_root=project_root)
         if outcome.decision != PolicyDecision.ALLOW:
             record_event(
@@ -68,8 +84,12 @@ def _run_sensors_locked(
             task_id=artifact_task,
             label=f"sensor-{sensor.name}",
             argv=sensor.argv,
-            timeout_seconds=sensor.timeout_seconds,
+            timeout_seconds=timeout,
         )
+        if state is not None:
+            state.tool_calls += 1
+            state.attempts += 1
+            save_task(project_root, state)
         output_evidence = capture_artifact_evidence(
             project_root,
             artifact_task,
@@ -104,6 +124,11 @@ def _run_sensors_locked(
                 "output_path": result.output_path,
             },
         )
+        if task_id is not None:
+            record_sensor_results(project_root, task_id, results)
+            if captured.stopped:
+                set_task_status(project_root, task_id, TaskStatus.PAUSED, error=captured.summary)
+                break
     return results
 
 
@@ -115,13 +140,14 @@ def run_sensors(
     names: list[str] | None = None,
 ) -> list[SensorResult]:
     """Run sensors only while their supplied configuration remains the durable one."""
-    with configuration_lock(project_root):
-        return _run_sensors_locked(
-            project_root,
-            config,
-            task_id=task_id,
-            names=names,
-        )
+    with task_lock(project_root, task_id) if task_id else nullcontext():
+        with configuration_lock(project_root):
+            return _run_sensors_locked(
+                project_root,
+                config,
+                task_id=task_id,
+                names=names,
+            )
 
 
 def required_sensors_passed(config: HarnessConfig, results: list[SensorResult]) -> bool:

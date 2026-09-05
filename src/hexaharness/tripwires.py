@@ -1,20 +1,22 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from pathlib import Path
 
 from hexaharness.events import iter_events, record_event
 from hexaharness.models import HarnessConfig, TaskState
+from hexaharness.state import task_elapsed_seconds
 
 
 def repeated_error_count(project_root: Path, task_id: str, fingerprint: str) -> int:
-    return sum(
-        1
-        for event in iter_events(project_root)
-        if event.task_id == task_id
-        and event.event_type == "command.failed"
-        and event.payload.get("fingerprint") == fingerprint
-    )
+    count = 0
+    for event in iter_events(project_root):
+        if event.task_id != task_id:
+            continue
+        if event.event_type == "command.succeeded":
+            count = 0
+        elif event.event_type == "command.failed":
+            count = count + 1 if event.payload.get("fingerprint") == fingerprint else 0
+    return count
 
 
 def active_trip_wires(
@@ -26,7 +28,7 @@ def active_trip_wires(
     required_sensor_failures: int = 0,
 ) -> list[str]:
     active: dict[str, str] = {}
-    elapsed = (datetime.now(UTC) - state.started_at).total_seconds()
+    elapsed = task_elapsed_seconds(state)
     if state.tool_calls >= config.budgets.max_tool_calls:
         active["tool-budget"] = "stop-and-preserve-state"
     cost_limit_reached = (

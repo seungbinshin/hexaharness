@@ -3,12 +3,12 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import secrets
 import shlex
 import stat
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import NoReturn
 
@@ -40,6 +40,7 @@ from hexaharness.state import (
     prepare_external_action,
     save_task,
     set_task_status,
+    task_elapsed_seconds,
     task_lock,
 )
 from hexaharness.tripwires import active_trip_wires
@@ -49,13 +50,8 @@ EXTERNAL_ACTION_TOKEN_PATTERN = re.compile(
 )
 
 
-def _remaining_wall_time(config: HarnessConfig, started_at: datetime) -> int:
-    elapsed = (datetime.now(UTC) - started_at).total_seconds()
-    return max(0, int(config.budgets.max_wall_time_seconds - elapsed))
-
-
 def _fingerprint(argv: list[str], exit_code: int | None, timed_out: bool) -> str:
-    material = f"{argv[0]}\0{exit_code}\0{timed_out}"
+    material = json.dumps([redact_argv(argv), exit_code, timed_out])
     return hashlib.sha256(material.encode()).hexdigest()[:16]
 
 
@@ -146,6 +142,23 @@ def _raise_budget_escalation(
         payload={"reason": reason, "escalation_path": escalation_path},
     )
     raise BudgetExceededError(f"{reason}; escalation packet: {escalation_path}")
+
+
+def execution_time_remaining(project_root: Path, config: HarnessConfig, state: TaskState) -> int:
+    """Apply the same task budgets to commands and computational sensors."""
+    remaining = config.budgets.max_wall_time_seconds - task_elapsed_seconds(state)
+    fired = active_trip_wires(project_root, config, state)
+    if fired:
+        if remaining <= 0:
+            reason = "task wall-time budget is exhausted"
+        elif state.tool_calls >= config.budgets.max_tool_calls:
+            reason = "task tool-call budget is exhausted"
+        else:
+            reason = f"task budget trip wire fired: {', '.join(fired)}"
+        _raise_budget_escalation(
+            project_root, state.task_id, reason=reason, evidence_paths=state.artifacts
+        )
+    return max(1, math.ceil(remaining))
 
 
 def _external_action_key(project_root: Path) -> bytes:
@@ -297,6 +310,9 @@ def _run_task_command_locked(
     human_gated_action = (
         outcome.decision == PolicyDecision.ASK and outcome.requires_human_approval and approved
     )
+    # Check before marking an external action started. A preflight refusal has no
+    # uncertain remote side effect and must leave the staged action recoverable.
+    execution_time_remaining(project_root, config, state)
     reconcile_step: str | None = None
     if human_gated_action:
         if retries:
@@ -342,21 +358,7 @@ def _run_task_command_locked(
             raise HarnessStoppedError(
                 "emergency stop became active; remaining command attempts were cancelled"
             )
-        remaining = _remaining_wall_time(config, state.started_at)
-        if remaining <= 0:
-            _raise_budget_escalation(
-                project_root,
-                task_id,
-                reason="task wall-time budget is exhausted",
-                evidence_paths=[*state.artifacts, *evidence],
-            )
-        if state.tool_calls >= config.budgets.max_tool_calls:
-            _raise_budget_escalation(
-                project_root,
-                task_id,
-                reason="task tool-call budget is exhausted",
-                evidence_paths=[*state.artifacts, *evidence],
-            )
+        remaining = execution_time_remaining(project_root, config, state)
         execution_timeout = min(timeout_seconds or remaining, remaining)
         captured = execute_capture(
             project_root,
@@ -481,6 +483,20 @@ def _run_task_command_locked(
                 error=captured.summary,
             )
             break
+
+    if not (human_gated_action or retries or last_timed_out or fired):
+        # A failed local check is feedback for the host's next repair step. Do not
+        # require a human or a resume operation after every deterministic failure.
+        return CommandResult(
+            task_id=task_id,
+            argv=redacted_argv,
+            decision=outcome.decision,
+            exit_code=last_exit_code,
+            attempts=attempts_made,
+            duration_seconds=total_duration,
+            output_path=evidence[-1],
+            summary=last_summary,
+        )
 
     reason = "command failed after bounded attempts"
     _, escalation_path = escalate_task(

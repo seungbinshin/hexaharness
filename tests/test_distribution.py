@@ -7,6 +7,8 @@ import tarfile
 import tomllib
 from pathlib import Path
 
+from hexaharness import __version__
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -22,7 +24,7 @@ def test_distribution_versions_match_project() -> None:
     marketplace = _read_json(".claude-plugin/marketplace.json")
     marketplace_plugin = marketplace["plugins"][0]  # type: ignore[index]
 
-    assert version == "0.2.0"
+    assert version == __version__
     assert codex["version"] == version
     assert claude["version"] == version
     assert marketplace_plugin["version"] == version  # type: ignore[index]
@@ -50,7 +52,7 @@ def test_only_primary_skill_is_discoverable_across_hosts() -> None:
     )
 
     assert skill_files == ["skills/hexaharness/SKILL.md"]
-    assert (ROOT / "skills/hexaharness/references/harness-engineering.md").is_file()
+    assert (ROOT / "skills/hexaharness/references/operating-loop.md").is_file()
 
 
 def test_runtime_requirements_match_uv_lock(tmp_path: Path) -> None:

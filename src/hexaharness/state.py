@@ -20,6 +20,7 @@ from hexaharness.models import (
     ArtifactEvidence,
     HarnessConfig,
     SensorResult,
+    TaskKind,
     TaskState,
     TaskStatus,
     WriteObservation,
@@ -191,6 +192,26 @@ def is_external_action_marker(value: str | None) -> bool:
 
 def has_external_action_marker(value: str | None, marker: str) -> bool:
     return value is not None and value.strip().upper().startswith(marker)
+
+
+def task_elapsed_seconds(state: TaskState, *, now: datetime | None = None) -> float:
+    """Count active wall time without charging a durable human-approval wait."""
+    current = now or utc_now()
+    waiting = 0.0
+    if has_external_action_marker(state.next_step, PENDING_EXTERNAL_ACTION):
+        if state.external_action_phase_started_at is not None:
+            waiting = max(0.0, (current - state.external_action_phase_started_at).total_seconds())
+    return max(
+        0.0, (current - state.started_at).total_seconds() - state.approval_wait_seconds - waiting
+    )
+
+
+def _finish_approval_wait(state: TaskState) -> None:
+    if has_external_action_marker(state.next_step, PENDING_EXTERNAL_ACTION):
+        if state.external_action_phase_started_at is not None:
+            state.approval_wait_seconds += max(
+                0.0, (utc_now() - state.external_action_phase_started_at).total_seconds()
+            )
 
 
 def validate_artifacts(project_root: Path, artifacts: list[str] | None) -> list[str]:
@@ -543,6 +564,35 @@ def qualifying_fresh_completion_artifacts(
     ]
 
 
+def qualifying_task_outputs(project_root: Path, state: TaskState) -> list[str]:
+    """Match completion evidence to the requested work, without manufacturing edits."""
+    if state.kind == TaskKind.CHANGE:
+        return qualifying_fresh_completion_artifacts(project_root, state)
+    if not state.completed_steps:
+        return []
+    fresh = {
+        evidence.path: evidence.sha256
+        for evidence in state.artifact_evidence
+        if evidence.path in state.artifacts
+        and artifact_evidence_is_current(project_root, state, evidence, require_fresh=True)
+    }
+    if state.kind == TaskKind.REVIEW:
+        return list(fresh)
+    # A release succeeds only after an executed action was verified; a cancelled or
+    # uncertain attempt, passing tests, or an arbitrary note cannot stand in for it.
+    verified: set[str] = set()
+    for event in iter_events(project_root):
+        if event.task_id != state.task_id or event.event_type != "external-action.verified":
+            continue
+        for item in event.payload.get("artifacts", []):
+            if not isinstance(item, dict):
+                continue
+            path = item.get("path")
+            if isinstance(path, str) and path in fresh and item.get("sha256") == fresh[path]:
+                verified.add(path)
+    return sorted(verified)
+
+
 def fresh_completion_artifact_claims(
     project_root: Path,
     state: TaskState,
@@ -644,6 +694,11 @@ def save_task(project_root: Path, state: TaskState) -> None:
                     "task status changes must use the validated status transition API"
                 )
             if (
+                current.kind != state.kind
+                or current.approval_wait_seconds != state.approval_wait_seconds
+            ):
+                raise PolicyBlockedError("task kind and approval time are lifecycle-managed")
+            if (
                 current.next_step != state.next_step
                 or current.external_action_phase_started_at
                 != state.external_action_phase_started_at
@@ -671,12 +726,15 @@ def list_tasks(project_root: Path) -> list[TaskState]:
     return sorted(tasks, key=lambda task: task.updated_at, reverse=True)
 
 
-def start_task(project_root: Path, goal: str, *, unattended: bool = False) -> TaskState:
+def start_task(
+    project_root: Path, goal: str, *, unattended: bool = False, kind: TaskKind = TaskKind.CHANGE
+) -> TaskState:
     snapshot = _guidance_snapshot(project_root)
     fingerprint = _stable_sha256(snapshot)
     state = TaskState(
         task_id=make_task_id(goal),
         goal=goal,
+        kind=kind,
         unattended=unattended,
         guidance_fingerprint=fingerprint,
     )
@@ -687,6 +745,7 @@ def start_task(project_root: Path, goal: str, *, unattended: bool = False) -> Ta
         task_id=state.task_id,
         payload={
             "goal": goal,
+            "kind": kind.value,
             "unattended": unattended,
             "guidance_fingerprint": fingerprint,
             "guidance_snapshot": snapshot,
@@ -792,6 +851,7 @@ def checkpoint_task(
         if next_step is not None:
             state.next_step = next_step
         elif clear_next or resolve_external_action or cancel_external_action:
+            _finish_approval_wait(state)
             state.next_step = None
             state.external_action_phase_started_at = None
         for artifact in normalized_artifacts:
@@ -825,7 +885,10 @@ def checkpoint_task(
                 project_root,
                 "external-action.verified",
                 task_id=task_id,
-                payload={"completed_step": completed_step},
+                payload={
+                    "completed_step": completed_step,
+                    "artifacts": [_file_evidence(project_root, p) for p in normalized_artifacts],
+                },
             )
         if resolve_external_action:
             record_event(
@@ -937,6 +1000,7 @@ def prepare_external_action(
                 f"record this exact next step first: {pending_step}"
             )
         changed = _apply_status_transition(state, TaskStatus.PAUSED, error=None)
+        _finish_approval_wait(state)
         state.next_step = reconcile_step
         state.external_action_phase_started_at = utc_now()
         _save_task_unlocked(project_root, state)

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.1 - 2026-09-05
+
+- Simplified the primary skill and removed a duplicate reference router. Small changes no longer
+  require separate design documents or redundant final sensor runs; existing exact authorization
+  remains valid across checkpoints.
+- Kept ordinary local command failures active for agent repair; repeated failures now distinguish
+  full commands and reset after success or a different failure.
+- Excluded durable approval waits from execution wall time and checked budgets before recording an
+  external action as started.
+- Added review and release task kinds so fresh findings or verified publication receipts can
+  complete work without artificial source edits.
+- Applied task execution budgets to sensors and checked reported token/cost limits before commands.
+- Stopped interpreting arguments to allowed local commands as unrelated executables.
+- Detected Node package managers and existing scripts; omitted unconfigured optional type checks.
+- Updated English and Korean usage documentation and synchronized both plugin manifests.
+
 ## 0.2.0 - 2026-09-01
 
 - Made the primary skill implicitly invocable for software project design, implementation,

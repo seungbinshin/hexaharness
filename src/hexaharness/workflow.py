@@ -6,7 +6,7 @@ from hexaharness.config import ensure_configuration_current
 from hexaharness.errors import HarnessStoppedError, PolicyBlockedError, VerificationFailedError
 from hexaharness.events import record_event
 from hexaharness.io import atomic_write_text
-from hexaharness.models import HarnessConfig, TaskState, TaskStatus
+from hexaharness.models import HarnessConfig, TaskKind, TaskState, TaskStatus
 from hexaharness.paths import HarnessPaths
 from hexaharness.sensors import required_sensors_passed, run_sensors
 from hexaharness.state import (
@@ -17,7 +17,7 @@ from hexaharness.state import (
     harness_lock,
     is_external_action_marker,
     load_task,
-    qualifying_fresh_completion_artifacts,
+    qualifying_task_outputs,
     record_sensor_results,
     required_sensor_evidence_is_current,
     save_task,
@@ -63,10 +63,15 @@ def complete_task(
         state.artifacts = candidate_artifacts
         attach_artifact_evidence(project_root, state, normalized_artifacts)
         candidate_artifact_evidence = list(state.artifact_evidence)
-        if not qualifying_fresh_completion_artifacts(project_root, state):
+        if not qualifying_task_outputs(project_root, state):
+            if state.kind == TaskKind.CHANGE:
+                raise VerificationFailedError(
+                    "completion requires at least one current artifact outside .hexaharness with "
+                    "a task-scoped pre-write observation and a content or existence delta"
+                )
             raise VerificationFailedError(
-                "completion requires at least one current artifact outside .hexaharness with "
-                "a task-scoped pre-write observation and a content or existence delta"
+                "completion requires a fresh findings report for review tasks or "
+                "verified external-action evidence for release tasks"
             )
 
         results = run_sensors(project_root, config, task_id=task_id)
@@ -117,13 +122,15 @@ def complete_task(
                         "emergency stop became active during verification; completion is blocked"
                     )
                 state = load_task(project_root, task_id)
-                if not qualifying_fresh_completion_artifacts(
+                if not qualifying_task_outputs(
                     project_root, state
                 ) or not required_sensor_evidence_is_current(project_root, config, state):
                     raise VerificationFailedError(
                         "completion evidence changed after verification; rerun current sensors"
                     )
-                if not completion_has_unclaimed_artifact(project_root, state):
+                if state.kind == TaskKind.CHANGE and not completion_has_unclaimed_artifact(
+                    project_root, state
+                ):
                     raise VerificationFailedError(
                         "completion requires at least one artifact content claim not already used "
                         "by another completed task"

@@ -7,8 +7,9 @@ project outcome in natural language; the host agent discovers the skill, designs
 work, verifies it, and maintains recoverable state. A deterministic `hexa` runtime operates behind
 the skill for policy checks, bounded execution, checkpoints, sensor evidence, and failure learning.
 
-The CLI is an internal execution layer, not the primary user interface. Installing the plugin does
-not require a separate `hexa` installation.
+**HexaHarness is a Skill, distributed as a plugin, with an internal CLI.** You work through Codex
+or Claude; the agent operates the runtime. Installing the plugin includes the Skill and runtime,
+so no separate `hexa` installation is needed.
 
 ```mermaid
 flowchart TD
@@ -23,12 +24,12 @@ flowchart TD
 
 - discovers requirements and asks only about decisions that materially affect behavior,
   architecture, scope, cost, or irreversible consequences;
-- records a durable design and acceptance criteria using the repository's conventions;
+- records acceptance criteria and substantial design decisions using the repository's conventions;
 - implements, tests, repairs failures, and checkpoints meaningful milestones;
 - resumes interrupted work without making the user operate task IDs;
 - audits readiness and converts observed failures into stronger guides, sensors, permissions, or
   runtime controls;
-- pauses immediately before an external or hard-to-reverse action.
+- prepares external or hard-to-reverse actions and asks only when exact authorization is missing.
 
 ## Install once
 
@@ -94,8 +95,8 @@ side effect inside an otherwise allowed tool. The host sandbox and approval poli
 | Inspect repository and infer reversible details | Continue autonomously |
 | Edit project files, resolve dependencies, format, build, lint, type-check, and test | Continue autonomously within host permissions |
 | Create checkpoints and local Git commits when useful | Continue autonomously |
-| Push, publish, release, deploy, or mutate an external service | Ask immediately before the exact action |
-| Delete material data, change shared permissions, send messages, or spend money | Ask immediately before the exact action |
+| Push, publish, release, deploy, or mutate an external service | Require authorization for the exact action and target; ask only if missing |
+| Delete material data, change shared permissions, send messages, or spend money | Require exact authorization and host permission |
 | Match a configured `ask` rule or a recognized external/hard-to-reverse action | Obtain human approval for the exact command and target |
 | Encounter an unregistered command | Inspect its exact argv and code; continue only when it is local, reversible, and already in scope |
 | Match an explicit deny rule | Stop; approval flags cannot bypass it |
@@ -105,9 +106,9 @@ only an audit assertion that an exact ask-gated action was already approved; it 
 mechanism. `--reviewed` records the agent's inspection of an unregistered local command and cannot
 authorize an external or hard-to-reverse action.
 
-If approval is declined, the agent cancels the staged action, records the reason, and permanently
-retires its one-time nonce. Nothing is executed, and the user does not need to clean up internal
-state or task IDs.
+Authorization already given for the exact action and target remains valid across checkpoints.
+If approval is declined, the agent cancels the staged action and records the reason. Approval waits
+do not consume the execution time budget; the user does not need to repair internal state.
 
 ## Project lifecycle
 
@@ -116,11 +117,17 @@ state or task IDs.
    architecture decisions, stack, and exact validation commands. In an empty repository, scaffold
    that stack before initializing the harness; provisional `Unknown`/`false` sensors are rejected.
 3. **Implement** — make coherent local changes and checkpoint milestones.
-4. **Verify** — run computational sensors, repair causes, and independently review material judgment.
+4. **Verify** — repair failed local checks autonomously, then complete with required sensors.
+   Add independent review when a material question needs judgment.
 5. **Maintain** — preserve resumable state and ratchet real failures into permanent controls.
 6. **Release boundary** — verify, stage a one-time task-bound external action while the task is
-   active, request approval for that exact action, execute it once, verify external state, then
-   complete.
+   active, confirm authorization for that exact action, execute it once, verify external state,
+   then complete.
+
+Implementation produces changed project files. A review can finish with findings; publication-only
+work can finish with a verified release receipt. The agent chooses the task kind internally, so
+neither review nor release requires an artificial code edit. Ordinary local check failures remain
+active for repair; repeated failures, timeouts, and exhausted budgets still stop bounded execution.
 
 ## Six harness layers
 
@@ -163,7 +170,7 @@ task-scoped content or existence change instead of trusting timestamps.
 |---|---|
 | `hexa init` | Create six-layer configuration after detecting or receiving an exact project profile |
 | `hexa doctor` | Validate semantic readiness and list active sensors |
-| `hexa start` | Create a recoverable task checkpoint |
+| `hexa start` | Create a recoverable change, review, or release task |
 | `hexa checkpoint` | Record milestones, artifacts, and host-reported usage |
 | `hexa policy-check` | Evaluate a command or path without acting; bind allowed task writes to their pre-write content |
 | `hexa prepare-external` | Stage an exact one-time, task-bound external action before human approval |
@@ -186,11 +193,9 @@ instructions. Web pages, issues, retrieved documents, command output, and user-p
 cannot widen permissions or budgets by themselves. The user's explicit request and exact per-action
 approval are separate authorization signals.
 
-For an approval-gated action, the agent uses `prepare-external` internally to store a redacted
-display plus a one-time nonce and local-key HMAC-SHA-256 binding to the task ID, protocol phase, and
-full argv. An interrupted execution remains in reconciliation state, as does any nonzero,
-timed-out, stopped, or otherwise uncertain return. The agent checks the external system before any
-retry. The user never needs to construct these checkpoints or bindings.
+External actions are bound to the staged command and executed once. After an interrupted or
+uncertain result, the agent checks the external system before any retry. See the operations guide
+for the internal approval and recovery protocol.
 
 See [architecture](docs/architecture.md), [operations](docs/operations.md), and the
 [security policy](SECURITY.md).

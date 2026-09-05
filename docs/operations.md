@@ -25,22 +25,35 @@ does not ask the user to operate the CLI.
 
 `hexa complete` is the only ordinary path to `completed`; it reruns required sensors. If a requested
 external action remains, the skill keeps the task active, stages the exact action, obtains approval,
-runs and verifies it, and only then completes. Completion requires at least one regular project
-artifact file outside `.hexaharness`. The task must have recorded an allowed pre-write observation
-for that path immediately before changing or creating it; completion then proves a content or
-existence delta and prevents the same content claim from crediting multiple tasks. A timeout or
-failed bounded command retains output and creates an escalation packet instead of hiding partial
-failure behind a fluent summary.
+runs and verifies it, and only then completes. Do not run a duplicate full sensor suite immediately
+before `complete` unless intermediate verification or a pre-publication gate requires it.
+
+Choose `hexa start --kind change|review|release` internally:
+
+| Kind | Completion evidence |
+|---|---|
+| `change` (default) | A changed or new regular project file outside `.hexaharness` |
+| `review` | A fresh findings report and completed review step; local runtime reports are valid |
+| `release` | Fresh evidence attached when verifying a successfully executed external action |
+
+Every output needs an allowed task-scoped pre-write observation and an actual content or existence
+delta. Change tasks cannot reuse another completed task's output claim. Runtime-only review and
+release reports do not count toward unattended artifact evidence. Existing checkpoints default to `change`; kind is fixed
+at creation. A cancelled or unresolved external action cannot count as a successful release.
 
 ## Approval and crash recovery
 
 `hexa prepare-external <task-id> -- <argv...>` records a redacted action display, a one-time nonce,
 and a local-key HMAC-SHA-256 binding to the task ID, protocol phase, and complete argv without
-executing it. The agent then asks for approval of that exact action and target. Once approval is
-given, `hexa run <task-id> --approved -- <argv...>` accepts only the same task and argv and never
+executing it. The agent checks whether existing authorization covers that exact action and target,
+and asks only if it is missing. Once authorized, `hexa run <task-id> --approved -- <argv...>` accepts only the same task and argv and never
 retries an external action automatically. If approval is declined, the agent records the reason and
 uses `checkpoint --cancel-external-action`; the pending nonce is retired without executing the
 action.
+
+Execution budgets are checked before marking the action as started. Time at the durable
+pending-approval checkpoint is excluded from wall time, including across a host restart. Cancellation
+or execution closes that wait; reactivation does not reset any consumed budget.
 
 Before execution the runtime atomically changes the checkpoint to `RECONCILE_EXTERNAL_ACTION`. A
 successful return changes it to `VERIFY_EXTERNAL_ACTION_RESULT`; the agent must inspect external
@@ -72,7 +85,13 @@ policy may impose a stricter boundary and always take precedence.
 CLI retry repeats the same argument array and is appropriate only for plausibly transient failures.
 Agentic repair is a higher-level loop: inspect retained evidence, identify the cause, change the code
 or harness, run the narrow check again, and then run required sensors. Repeating an unchanged
-deterministic failure does not count as repair.
+deterministic failure does not count as repair. A normal failed local command keeps the task active
+so the host can fix it without a resume or human intervention. Consecutive matching command failures,
+explicitly exhausted retries, timeouts, and budget limits still escalate with retained evidence.
+
+Commands and task-scoped sensors consume the same tool-call and wall-time budget. Recorded token
+and cost limits are checked before either starts. Partial sensor results survive a mid-suite stop.
+Standalone operator `verify` has no task budget and uses each sensor's configured timeout.
 
 ## Exit codes
 

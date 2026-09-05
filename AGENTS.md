@@ -15,9 +15,10 @@
 - Let the skill operate its bundled CLI internally; do not require the user to manage task IDs or
   routine harness commands.
 - Read `.hexaharness/GUIDES.md` for active failure-derived rules.
-- Keep project-local reversible work autonomous. Ask immediately before push, publish, deploy,
-  material deletion, shared permission changes, messages, billing, or another credential-authorized
-  external mutation. Let the skill stage and bind that exact action internally before asking.
+- Keep project-local reversible work autonomous. External or hard-to-reverse actions require
+  authorization for the exact action and target. Reuse applicable authorization already given;
+  otherwise finish local preparation and ask immediately before execution. Let the skill stage
+  and bind the action internally.
 <!-- hexaharness:end -->
 
 ## Operating rules
@@ -42,6 +43,6 @@
 
 ## Completion contract
 
-Work is complete only when a regular project-output artifact exists outside `.hexaharness`,
-deterministic sensors pass, remaining risks are explicit, and any external mutation requested by
-the task has been separately approved and verified.
+Work is complete when deterministic sensors pass, remaining risks are explicit, and the output
+matches the task: a changed project file for implementation, fresh findings for review, or a verified
+external-action receipt for release. Any requested external mutation must be authorized and verified.

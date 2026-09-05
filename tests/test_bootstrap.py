@@ -12,6 +12,8 @@ from types import ModuleType
 
 import pytest
 
+from hexaharness import __version__
+
 ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = ROOT / "skills" / "hexaharness" / "scripts" / "hexa.py"
 
@@ -262,7 +264,7 @@ def test_launcher_executes_bundled_source_with_configured_runtime() -> None:
     )
 
     assert result.returncode == 0
-    assert result.stdout.strip() == "0.2.0"
+    assert result.stdout.strip() == __version__
 
 
 def test_launcher_ignores_shadow_package_in_target_repository(tmp_path: Path) -> None:
@@ -286,7 +288,7 @@ def test_launcher_ignores_shadow_package_in_target_repository(tmp_path: Path) ->
     )
 
     assert result.returncode == 0
-    assert result.stdout.strip() == "0.2.0"
+    assert result.stdout.strip() == __version__
     assert "shadowed" not in result.stderr
     assert not startup_marker.exists()
 
@@ -310,4 +312,4 @@ def test_launcher_supports_plugin_paths_with_spaces(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0
-    assert result.stdout.strip() == "0.2.0"
+    assert result.stdout.strip() == __version__

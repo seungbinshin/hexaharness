@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,51 @@ def _write_python_project(root: Path) -> None:
     (root / "pyproject.toml").write_text(
         '[project]\nname = "sample"\nversion = "0.1.0"\n', encoding="utf-8"
     )
+
+
+def test_python_does_not_require_an_unconfigured_type_checker(tmp_path: Path) -> None:
+    _write_python_project(tmp_path)
+    config = initialize_project(tmp_path)
+    assert config.project.typecheck is None
+    assert {sensor.name for sensor in config.sensors} == {"build", "lint", "test"}
+
+
+@pytest.mark.parametrize("target", [".", "src"])
+def test_python_mypy_target_follows_project_layout(tmp_path: Path, target: str) -> None:
+    (tmp_path / "pyproject.toml").write_text("[tool.mypy]\nstrict = true\n", encoding="utf-8")
+    if target == "src":
+        (tmp_path / target).mkdir()
+    config = initialize_project(tmp_path)
+    assert config.project.typecheck == ["uv", "run", "mypy", target]
+
+
+@pytest.mark.parametrize("manager", ["npm", "pnpm", "yarn"])
+def test_node_uses_declared_package_manager_and_existing_scripts(
+    tmp_path: Path, manager: str
+) -> None:
+    (tmp_path / "package.json").write_text(
+        json.dumps(
+            {
+                "packageManager": f"{manager}@1.0.0",
+                "scripts": {"build": "tsc", "test": "vitest run", "lint": "eslint ."},
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = initialize_project(tmp_path)
+    assert config.project.test == [manager, "run", "test"]
+    assert config.project.typecheck is None
+
+
+def test_node_missing_scripts_require_real_commands_before_initializing(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text('{"scripts": {"test": "node --test"}}', encoding="utf-8")
+    with pytest.raises(ValueError, match="provide exact --build, --lint"):
+        initialize_project(tmp_path)
+    assert not HarnessPaths(tmp_path).config.exists()
+    assert not (tmp_path / "AGENTS.md").exists()
+    config = initialize_project(tmp_path, build=["tsc"], lint=["eslint", "."])
+    assert config.project.build == ["tsc"]
+    assert config.project.test == ["npm", "run", "test"]
 
 
 def test_initialize_preserves_existing_agent_guide(tmp_path: Path) -> None:

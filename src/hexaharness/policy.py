@@ -306,24 +306,44 @@ def _effective_argv(argv: list[str]) -> list[str]:
     return effective
 
 
-def _risk_command_shapes(*commands: list[str]) -> list[list[str]]:
-    """Return normalized command suffixes used only for deny and human-gate classification.
+def _risk_command_shapes(config: HarnessConfig, argv: list[str]) -> list[list[str]]:
+    """Inspect executable positions, leaving operands of trusted local tools as data.
 
-    An opaque launcher can put the executable after flags or runner-specific operands.  Allowing
-    every suffix would be unsafe, but examining them at the stricter deny/approval layers ensures
-    a known risky command cannot be downgraded merely by adding an unfamiliar launcher prefix.
+    Follow transparent launchers first. For an unknown launcher, conservatively inspect its
+    suffixes until a configured command is reached. Never reinterpret a search string, test
+    selector, commit message, or filename inside that command as another executable.
     """
     shapes: list[list[str]] = []
     seen: set[tuple[str, ...]] = set()
-    for command in commands:
-        for index in range(len(command)):
-            shape = [*command[index:]]
-            shape[0] = _command_name(shape[0])
-            for candidate in (shape, _git_subcommand_argv(shape)):
-                key = tuple(candidate)
-                if key not in seen:
-                    seen.add(key)
-                    shapes.append(candidate)
+    command = argv
+    while command:
+        shape = [_command_name(command[0]), *command[1:]]
+        classified = _git_subcommand_argv(shape)
+        for candidate in (shape, classified):
+            key = tuple(candidate)
+            if key not in seen:
+                seen.add(key)
+                shapes.append(candidate)
+        if nested := _transparent_launcher_nested_argv(shape):
+            command = nested
+            continue
+        opaque_launcher = shape[0] in {
+            "env",
+            "uv",
+            "npx",
+            "strace",
+            "xargs",
+            "parallel",
+            "busybox",
+            "toybox",
+        }
+        if not opaque_launcher and any(
+            _matches_prefix(candidate, prefix)
+            for candidate in (shape, classified)
+            for prefix in config.policy.allow_execute
+        ):
+            break
+        command = command[1:]
     return shapes
 
 
@@ -894,7 +914,7 @@ def evaluate_command(
         return PolicyOutcome(PolicyDecision.DENY, "empty commands are invalid")
     effective = _effective_argv(argv)
     classified = _git_subcommand_argv(effective)
-    risk_shapes = _risk_command_shapes(argv, effective)
+    risk_shapes = _risk_command_shapes(config, argv)
     trusted_shapes = (argv, effective, classified)
     if project_root is not None:
         for command_shape in (argv, effective):

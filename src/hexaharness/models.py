@@ -26,6 +26,12 @@ class TaskStatus(StrEnum):
     FAILED = "failed"
 
 
+class TaskKind(StrEnum):
+    CHANGE = "change"
+    REVIEW = "review"
+    RELEASE = "release"
+
+
 class AuditStatus(StrEnum):
     PASS = "pass"
     WARN = "warn"
@@ -273,6 +279,7 @@ class TaskState(BaseModel):
 
     task_id: str
     goal: str = Field(min_length=1)
+    kind: TaskKind = TaskKind.CHANGE
     status: TaskStatus = TaskStatus.ACTIVE
     unattended: bool = False
     started_at: datetime = Field(default_factory=utc_now)
@@ -282,6 +289,7 @@ class TaskState(BaseModel):
     next_step: str | None = None
     external_action_phase_started_at: datetime | None = None
     external_action_nonces: list[str] = Field(default_factory=list)
+    approval_wait_seconds: float = Field(default=0.0, ge=0)
     artifacts: list[str] = Field(default_factory=list)
     artifact_evidence: list[ArtifactEvidence] = Field(default_factory=list)
     write_observations: list[WriteObservation] = Field(default_factory=list)

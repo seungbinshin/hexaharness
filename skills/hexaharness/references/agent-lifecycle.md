@@ -26,7 +26,7 @@ and evidence.
 4. Record architecture decisions where the repository already keeps design documentation. Include
    rejected alternatives only when the tradeoff will matter later.
 5. Split work into milestones with a verification signal for each. Keep the current milestone in
-   the HexaHarness checkpoint; keep the fuller plan in a durable repository artifact.
+   the HexaHarness checkpoint; write a separate plan only when its detail will help future work.
 
 ## Implement and repair
 
@@ -80,8 +80,9 @@ failures back for repair and applies the same retry and escalation bounds.
    skipped checks and reasons explicitly.
 5. If push, publish, deploy, deletion, shared permission changes, messages, billing, or another
    credential-authorized external mutation remains, use `prepare-external` to create a one-time
-   task-bound checkpoint and keep the task active. Pause for approval immediately before the exact
-   action. If approval is declined, cancel the pending action with a recorded reason. Otherwise run
+   task-bound checkpoint and keep the task active. Check existing authorization for the exact action
+   and target; ask immediately before execution only when it is missing. If approval is declined,
+   cancel the pending action with a recorded reason. Otherwise run
    the identical argv once with `--approved`, verify the external result, and create task-attributed
    evidence after the verification phase begins before clearing the step. Reconcile any
    non-successful or uncertain return, including nonzero exit, timeout, stop, or interruption, with

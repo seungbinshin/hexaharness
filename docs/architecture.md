@@ -48,7 +48,7 @@ allowed by the default profile. External publication and service mutations requi
 while known destructive commands are denied. Unknown commands enter an agent-review boundary:
 `--reviewed` records inspection of exact argv and implementation but cannot authorize external or
 hard-to-reverse work. The `--approved` flag is an audit assertion, not an approval mechanism; the
-host must obtain approval for the exact action first.
+host must have valid authorization for the exact action and target before execution.
 
 The skill routes material project commands through the core and policy-checks host file-write
 targets. The host sandbox remains the actual process and filesystem boundary: HexaHarness can record
@@ -60,7 +60,9 @@ Configuration and failure-derived guides are tracked. Runtime checkpoints, comma
 proposals, and the emergency stop are local and Git-ignored. Every state update uses an atomic
 same-directory replacement. Task-start events fingerprint the active configuration and guide files;
 task-scoped pre-write observations bind artifacts to content or existence deltas, and checkpoint
-events fingerprint regular artifact files. Every command record redacts common
+events fingerprint regular artifact files. Task kind selects completion evidence: project changes, review findings, or verified release
+receipts. Commands and task-scoped sensors share execution budgets, excluding durable approval wait
+time. Every command record redacts common
 secret-bearing flags and stores full output outside Git. Human-gated actions use a redacted display,
 one-time nonce, and local-key HMAC of the task ID, protocol phase, and full argv. This prevents a
 secret-bearing argument, task, or phase from changing after approval without exposing an unkeyed
@@ -74,8 +76,8 @@ management system.
 ## Intentional limits
 
 Version 0.2 has no model SDK, background daemon, knowledge graph, inferential judge, or multi-agent
-router. When a host supplies subagents, the skill uses typed artifact/evidence handoffs and separates
-producer from reviewer, while the shared checkpoint remains authoritative. The host agent supplies
+router. If independent review is needed and the host supplies subagents, the skill uses bounded evidence
+handoffs while the shared checkpoint remains authoritative. The host agent supplies
 intelligence and routing; HexaHarness supplies reusable operating discipline and deterministic
 controls. Add another runtime layer only when observed failures show that the current split is
 insufficient.

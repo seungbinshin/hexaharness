@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import tomllib
 from pathlib import Path
 
 import yaml
@@ -36,22 +38,41 @@ def _deduplicate_commands(commands: list[list[str]]) -> list[list[str]]:
 def infer_project(project_root: Path, name: str | None = None) -> ProjectConfig | None:
     project_name = name or project_root.name
     if (project_root / "pyproject.toml").is_file():
+        with (project_root / "pyproject.toml").open("rb") as stream:
+            document = tomllib.load(stream)
+        # Optional sensors must have project evidence; not every Python project
+        # uses mypy or a src/ layout.
+        uses_mypy = "mypy" in document.get("tool", {}) or (project_root / "mypy.ini").is_file()
         return ProjectConfig(
             name=project_name,
             language="Python",
             build=["uv", "build"],
             test=["uv", "run", "pytest"],
             lint=["uv", "run", "ruff", "check", "."],
-            typecheck=["uv", "run", "mypy", "src"],
+            typecheck=(
+                ["uv", "run", "mypy", "src" if (project_root / "src").is_dir() else "."]
+                if uses_mypy
+                else None
+            ),
         )
     if (project_root / "package.json").is_file():
+        document = json.loads((project_root / "package.json").read_text(encoding="utf-8"))
+        manager = str(document.get("packageManager", "")).split("@", 1)[0]
+        if manager not in {"npm", "pnpm", "yarn"}:
+            manager = (
+                "pnpm"
+                if (project_root / "pnpm-lock.yaml").is_file()
+                else ("yarn" if (project_root / "yarn.lock").is_file() else "npm")
+            )
         return ProjectConfig(
             name=project_name,
             language="TypeScript/JavaScript",
-            build=["npm", "run", "build"],
-            test=["npm", "test"],
-            lint=["npm", "run", "lint"],
-            typecheck=["npm", "run", "typecheck"],
+            build=[manager, "run", "build"],
+            test=[manager, "run", "test"],
+            lint=[manager, "run", "lint"],
+            typecheck=[manager, "run", "typecheck"]
+            if "typecheck" in document.get("scripts", {})
+            else None,
         )
     if (project_root / "Cargo.toml").is_file():
         return ProjectConfig(
@@ -86,6 +107,22 @@ def resolve_project(
 ) -> ProjectConfig:
     """Resolve a complete project profile before initialization mutates the repository."""
     detected = infer_project(project_root, name)
+    if detected is not None and detected.language == "TypeScript/JavaScript":
+        document = json.loads((project_root / "package.json").read_text(encoding="utf-8"))
+        scripts = document.get("scripts", {})
+        missing = [
+            field
+            for field, override in {"build": build, "test": test, "lint": lint}.items()
+            if override is None and not scripts.get(field)
+        ]
+        if missing:
+            raise ValueError(
+                "package.json has no script for "
+                + ", ".join(missing)
+                + "; provide exact "
+                + ", ".join(f"--{field}" for field in missing)
+                + " commands"
+            )
     if detected is None:
         missing = [
             field

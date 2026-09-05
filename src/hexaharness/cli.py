@@ -25,6 +25,7 @@ from hexaharness.models import (
     FailureClass,
     HarnessLayer,
     PolicyDecision,
+    TaskKind,
 )
 from hexaharness.paths import find_project_root
 from hexaharness.policy import evaluate_command, evaluate_path
@@ -208,11 +209,14 @@ def start(
     goal: Annotated[str, typer.Argument(help="Observable task goal.")],
     root: RootOption = None,
     unattended: Annotated[bool, typer.Option(help="Mark the run as unattended evidence.")] = False,
+    kind: Annotated[
+        TaskKind, typer.Option(help="Expected outcome: change, review, or release.")
+    ] = TaskKind.CHANGE,
 ) -> None:
     """Create a recoverable task checkpoint."""
     project_root = _project_root(root)
     ensure_configuration_ready(load_config(project_root), project_root)
-    _emit_json(start_task(project_root, goal, unattended=unattended))
+    _emit_json(start_task(project_root, goal, unattended=unattended, kind=kind))
 
 
 @app.command()

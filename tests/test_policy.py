@@ -25,6 +25,24 @@ def test_policy_uses_deny_ask_allow_precedence(harness_project: Path) -> None:
     assert unknown.decision == PolicyDecision.ASK
 
 
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["rg", "--fixed-strings", "gh", "README.md"],
+        ["git", "add", "terraform", "destroy"],
+        ["git", "commit", "-m", "gh"],
+        ["uv", "run", "pytest", "-k", "gh"],
+        ["timeout", "10", "rg", "--fixed-strings", "gh", "README.md"],
+    ],
+)
+def test_data_arguments_do_not_become_executable_commands(tmp_path: Path, argv: list[str]) -> None:
+    from hexaharness.config import default_config
+
+    (tmp_path / "pyproject.toml").write_text('[project]\nname="sample"\nversion="1"\n')
+    config = default_config(tmp_path)
+    assert evaluate_command(config, argv).decision == PolicyDecision.ALLOW
+
+
 def test_path_policy_blocks_escape_and_secret_write(harness_project: Path) -> None:
     config = load_config(harness_project)
     outside = evaluate_path(
