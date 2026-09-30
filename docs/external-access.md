@@ -75,6 +75,11 @@ existing parent. Use native canonical paths: symlinks, traversal, special files,
 files, project/home/system roots, and protected vault/chat/Git/SSH paths are rejected.
 Existing denied-write rules still take precedence.
 
+For exact depth-one scratch directories or two-name hardlink transactions, use the separate
+[anchored transaction contract](external-transactions.md). These opt-ins add `transactions` to
+the scope; they do not widen legacy `paths` or `children`. Review the executor contract before
+approval, and pre-bind all generated names. Undeclared subprocess I/O is never implicitly approved.
+
 Temporary families mean matching names **minus** protected and denied targets. Command preflight
 checks exact writable names and existing family matches, including their metadata. The reviewed
 scope includes internal, nonrecursive directory enumeration for this metadata validation; it does

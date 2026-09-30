@@ -19,6 +19,7 @@ from hexaharness.config import (
 from hexaharness.errors import HexaHarnessError, PolicyBlockedError, VerificationFailedError
 from hexaharness.events import record_event
 from hexaharness.external_access import (
+    WRITE_OPERATIONS,
     grant_external_access,
     load_access_grant,
     revoke_external_access,
@@ -661,13 +662,9 @@ def policy_check(
         load_access_grant(project_root, task_id, access_grant) if task_id and access_grant else None
     )
     if operation is not None:
-        if write and operation not in {
-            PathOperation.CREATE,
-            PathOperation.REPLACE,
-            PathOperation.DELETE,
-        }:
+        if write and operation not in WRITE_OPERATIONS:
             raise typer.BadParameter("--write conflicts with a read-only --operation")
-        write = operation in {PathOperation.CREATE, PathOperation.REPLACE, PathOperation.DELETE}
+        write = operation in WRITE_OPERATIONS
     if path is not None:
         outcome = evaluate_path(
             config,

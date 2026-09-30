@@ -63,6 +63,12 @@ dependencies without invoking an unapproved loader. Use only a reviewed, exactly
 external writes and keep secrets out of chat, argv, logs, and receipts. Do not widen the project
 root or global rules to get around a denial.
 
+For scratch-directory probes or hardlink publication/recovery, read
+[exact external transactions](../../docs/external-transactions.md). Pre-bind exact names and review
+the executor's anchored locking, provenance, and recovery checks before approving the opt-in.
+Use separate read-only inspection and recovery-write grants; never infer cleanup authority from a
+matching name or owner. If runtime validation or creation evidence is unavailable, keep writes blocked.
+
 Stage external actions with `prepare-external`, execute the identical argv once after authorization,
 and verify the external result. Reconcile uncertain results before any retry. `--approved` records
 authorization already given; `--reviewed` records inspection of an unknown local command. Neither

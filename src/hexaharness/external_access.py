@@ -14,6 +14,13 @@ from pathlib import Path
 
 from hexaharness.errors import PolicyBlockedError
 from hexaharness.events import record_event
+from hexaharness.external_transactions import (
+    normalize_transactions,
+    transaction_path_reason,
+    transaction_writes,
+    validate_hardlink_path,
+    validate_transactions,
+)
 from hexaharness.io import redact_argv
 from hexaharness.models import (
     ExternalAccessGrant,
@@ -25,7 +32,14 @@ from hexaharness.models import (
 from hexaharness.paths import HarnessPaths
 from hexaharness.state import _save_task_unlocked, harness_lock, load_task, task_lock
 
-WRITE_OPERATIONS = {PathOperation.CREATE, PathOperation.REPLACE, PathOperation.DELETE}
+WRITE_OPERATIONS = {
+    PathOperation.CREATE,
+    PathOperation.REPLACE,
+    PathOperation.DELETE,
+    PathOperation.MKDIR,
+    PathOperation.RMDIR,
+    PathOperation.LINK,
+}
 PROTECTED_COMPONENTS = {".git", ".ssh", "owner.vault", "conversations", "chats"}
 
 
@@ -60,10 +74,16 @@ def _digest(root: Path, label: str, value: object) -> str:
 
 
 def _signature(root: Path, grant: ExternalAccessGrant) -> str:
-    return _digest(root, "external-access-v1", grant.model_dump(mode="json", exclude={"signature"}))
+    payload = grant.model_dump(mode="json", exclude={"signature"})
+    # Preserve existing 0.3.0 grant signatures; new opt-ins are fully signed when present.
+    if not grant.scope.transactions:
+        payload["scope"].pop("transactions", None)
+    if not grant.transaction_identities:
+        payload.pop("transaction_identities", None)
+    return _digest(root, "external-access-v1", payload)
 
 
-def external_path(path: Path) -> Path:
+def external_path(path: Path, *, scope: ExternalAccessRequest | None = None) -> Path:
     """Reject aliases and traversal before resolving, including missing future targets."""
     if not path.is_absolute() or ".." in path.parts or "\x00" in str(path):
         raise ValueError("external paths must be absolute and cannot contain traversal or NUL")
@@ -76,13 +96,19 @@ def external_path(path: Path) -> Path:
         info = path.stat()
         if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
             raise ValueError("external access requires regular files or directories")
-        if stat.S_ISREG(info.st_mode) and info.st_nlink != 1:
+        if (
+            stat.S_ISREG(info.st_mode)
+            and info.st_nlink != 1
+            and not (scope is not None and validate_hardlink_path(scope, path))
+        ):
             raise ValueError("external access cannot use multiply linked files")
     return path.resolve()
 
 
 def has_external_writes(grant: ExternalAccessGrant) -> bool:
-    return any(WRITE_OPERATIONS.intersection(rule.operations) for rule in grant.scope.paths)
+    return any(
+        WRITE_OPERATIONS.intersection(rule.operations) for rule in grant.scope.paths
+    ) or transaction_writes(grant.scope)
 
 
 def _normalize_scope(root: Path, request: ExternalAccessRequest) -> ExternalAccessRequest:
@@ -93,6 +119,12 @@ def _normalize_scope(root: Path, request: ExternalAccessRequest) -> ExternalAcce
     broad = {Path.home().resolve(), Path(root.anchor), root, *root.parents}
     broad.update(Path(p) for p in ("/Users", "/home", "/tmp", "/var", "/etc", "/usr", "/opt"))
     for rule in scope.paths:
+        if {PathOperation.MKDIR, PathOperation.RMDIR, PathOperation.LINK}.intersection(
+            rule.operations
+        ):
+            raise ValueError(
+                "unsupported-operation: mkdir/rmdir/link require an explicit transaction"
+            )
         path = external_path(Path(rule.path))
         if path.is_relative_to(root) or path in broad:
             raise ValueError(
@@ -131,7 +163,7 @@ def _normalize_scope(root: Path, request: ExternalAccessRequest) -> ExternalAcce
         elif PathOperation.LIST in rule.operations and not path.is_dir():
             raise ValueError("list requires an existing directory")
     for use in scope.arguments:
-        use.path = str(external_path(Path(use.path)))
+        use.path = str(external_path(Path(use.path), scope=scope))
     if len({use.path for use in scope.arguments}) != len(scope.arguments):
         raise ValueError("declare each external command path once")
     return scope
@@ -157,10 +189,11 @@ def grant_external_access(
         if HarnessPaths(root).stop_file.exists():
             raise PolicyBlockedError("emergency stop is active")
         normalized = _normalize_scope(root, scope)
+        identities = normalize_transactions(root, normalized)
         if (
             any(WRITE_OPERATIONS.intersection(rule.operations) for rule in normalized.paths)
-            and not argv
-        ):
+            or transaction_writes(normalized)
+        ) and not argv:
             raise ValueError("external writes require an exact reviewed command")
         if argv is not None and (
             not argv or any(not item.strip() or "\x00" in item for item in argv)
@@ -173,6 +206,7 @@ def grant_external_access(
             approved_at=utc_now(),
             command_hmac=_digest(root, "external-command-v1", argv) if argv else None,
             command_display=redact_argv(argv) if argv else [],
+            transaction_identities=identities,
         )
         for use in normalized.arguments:
             if reason := external_path_reason(grant, Path(use.path), use.operation):
@@ -219,6 +253,7 @@ def validate_access_grant(
         or not hmac.compare_digest(grant.command_hmac, _digest(root, "external-command-v1", argv))
     ):
         raise PolicyBlockedError("command does not match the exact external access approval")
+    validate_transactions(grant.scope, grant.transaction_identities)
 
 
 def revoke_external_access(root: Path, task_id: str, grant_id: str) -> None:
@@ -238,7 +273,12 @@ def revoke_external_access(root: Path, task_id: str, grant_id: str) -> None:
 def external_path_reason(grant: ExternalAccessGrant, target: Path, operation: str) -> str | None:
     """None means covered. Checking permission never reads file contents."""
     try:
-        path = external_path(target)
+        path = external_path(target, scope=grant.scope)
+        matched, reason = transaction_path_reason(
+            grant.scope, grant.transaction_identities, path, operation
+        )
+        if matched:
+            return reason
         for rule in grant.scope.paths:
             anchor = external_path(Path(rule.path))
             if operation == "transaction":

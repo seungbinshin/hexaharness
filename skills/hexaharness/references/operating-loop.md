@@ -52,6 +52,12 @@ Otherwise read-only command grants run directly with `run --approved`, without s
 A read-only file scope does not downgrade a command already classified as an external mutation.
 The flags record existing authorization; they do not acquire it.
 
+The optional [anchored transaction contract](../../../docs/external-transactions.md) adds exact
+scratch directories and hardlink pairs. `mkdir`, `rmdir`, and `link` path queries are preflight only.
+Existing scratch remnants need independent inspection and reviewed creation evidence before a
+separate recovery write grant. Exact names must be bound before approval; a tool that still creates
+undisclosed names is not yet compatible. Do not skip executor review because policy checks pass.
+
 External stdout/stderr is discarded. Have the reviewed tool write only safe, selected verification
 fields to project-local evidence. For an uncertain mutation, retain its reconciliation marker and
 use a separate read-only grant to inspect state. Explicit reactivation preserves the marker and

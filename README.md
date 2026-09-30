@@ -126,6 +126,11 @@ Host permissions and explicit denials still apply. Existing projects need no rei
 See [external-access setup and limits](docs/external-access.md). A grant's lifetime is separate from
 the validity period of a profile being issued; no real service access is enabled by installation.
 
+Exact temporary directories and two-name hardlink transactions can opt into the
+[anchored execution contract](docs/external-transactions.md). It preserves default denial and
+separates inspection from recovery writes. This extension currently requires POSIX ownership
+metadata and a compatible reviewed executor; preflight does not enforce subprocess I/O.
+
 ## Project lifecycle
 
 1. **Discover** — inspect instructions, code, tests, history, and active checkpoints.

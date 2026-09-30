@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 - 2026-09-30
+
+- Added opt-in exact scratch directories and two-name hardlink pairs with signed parent/lock
+  identities, explicit mkdir/rmdir/link operations, and separate provenance-based recovery scopes.
+  Existing external grants retain their signatures and default rejection. The anchored-v1 contract
+  currently requires POSIX metadata and a reviewed executor; it is not syscall interception.
+- Added synthetic policy and Linux executor coverage plus agent guidance for interrupted probes,
+  publication, and recovery. Live application/platform compatibility remains a separate check.
 
 - Added Skill and operator guidance for Windows host sandbox error 1385: distinguish host launch
   failures from project failures, avoid repeated retries and approval-prefix bypasses, and preserve

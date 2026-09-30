@@ -7,7 +7,12 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from hexaharness.errors import PolicyBlockedError
-from hexaharness.external_access import external_path_reason, validate_access_grant
+from hexaharness.external_access import (
+    WRITE_OPERATIONS,
+    external_path_reason,
+    validate_access_grant,
+)
+from hexaharness.external_transactions import transaction_targets
 from hexaharness.models import ExternalAccessGrant, HarnessConfig, PathOperation, PolicyDecision
 
 
@@ -941,7 +946,7 @@ def evaluate_command(
             )
         try:
             validate_access_grant(project_root, task_id, access, argv)
-        except (PolicyBlockedError, ValueError) as error:
+        except (PolicyBlockedError, ValueError, OSError) as error:
             return PolicyOutcome(PolicyDecision.DENY, str(error))
         if reason := _external_write_scope_reason(config, access):
             return PolicyOutcome(PolicyDecision.DENY, reason)
@@ -1032,6 +1037,9 @@ def _external_write_scope_reason(config: HarnessConfig, access: ExternalAccessGr
     from hexaharness.external_access import WRITE_OPERATIONS, external_path
 
     try:
+        for target, operations in transaction_targets(access.scope):
+            if WRITE_OPERATIONS.intersection(operations) and _external_write_denied(config, target):
+                return "external transaction includes a denied write target"
         for rule in access.scope.paths:
             if not WRITE_OPERATIONS.intersection(rule.operations):
                 continue
@@ -1062,11 +1070,11 @@ def _external_path_outcome(
         return PolicyOutcome(PolicyDecision.DENY, "target escapes the configured project root")
     try:
         validate_access_grant(root, task_id, access)
-    except (PolicyBlockedError, ValueError) as error:
+    except (PolicyBlockedError, ValueError, OSError) as error:
         return PolicyOutcome(PolicyDecision.DENY, str(error))
     if operation == "transaction" and (reason := _external_write_scope_reason(config, access)):
         return PolicyOutcome(PolicyDecision.DENY, reason)
-    if operation in {"create", "replace", "delete"} and _external_write_denied(config, target):
+    if operation in WRITE_OPERATIONS and _external_write_denied(config, target):
         return PolicyOutcome(PolicyDecision.DENY, "external target matches a denied write path")
     reason = external_path_reason(access, target, operation)
     if reason:
@@ -1087,6 +1095,10 @@ def evaluate_path(
     root = project_root.resolve()
     resolved = target.resolve() if target.is_absolute() else (root / target).resolve()
     try:
+        if target.is_absolute() and not target.is_relative_to(root):
+            raise ValueError(
+                "lexically external paths require external policy even through aliases"
+            )
         relative = resolved.relative_to(root).as_posix()
     except ValueError:
         if write and operation is None and access is not None:
@@ -1098,7 +1110,7 @@ def evaluate_path(
         return _external_path_outcome(config, root, candidate, access, task_id, operation or "read")
 
     if operation is not None:
-        write = operation in {PathOperation.CREATE, PathOperation.REPLACE, PathOperation.DELETE}
+        write = operation in WRITE_OPERATIONS
 
     components = [part.casefold() for part in Path(relative).parts]
     basename = components[-1] if components else ""

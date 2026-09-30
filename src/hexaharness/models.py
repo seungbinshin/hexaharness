@@ -39,6 +39,9 @@ class PathOperation(StrEnum):
     CREATE = "create"
     REPLACE = "replace"
     DELETE = "delete"
+    MKDIR = "mkdir"
+    RMDIR = "rmdir"
+    LINK = "link"
 
 
 class ExternalPathRule(BaseModel):
@@ -56,6 +59,50 @@ class ExternalArgumentUse(BaseModel):
     operation: PathOperation | Literal["transaction"]
 
 
+class FileIdentity(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    device: int
+    inode: int
+    owner: int
+    mode: int
+
+
+class ExternalNamedFile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    operations: list[PathOperation] = Field(min_length=1)
+
+
+class ExternalScratchDirectory(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    operations: list[PathOperation] = Field(min_length=1)
+    files: list[ExternalNamedFile] = Field(min_length=1, max_length=16)
+    # Recovery writes require identity from a reviewed creation receipt, not just a matching name.
+    created_identity: FileIdentity | None = None
+    recovery_evidence: str | None = None
+
+
+class ExternalHardlinkPair(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: ExternalNamedFile
+    destination: ExternalNamedFile
+
+
+class ExternalTransaction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    parent: str
+    lock: str
+    executor_contract: Literal["anchored-v1"]
+    scratch_directories: list[ExternalScratchDirectory] = Field(default_factory=list, max_length=8)
+    hardlink_pairs: list[ExternalHardlinkPair] = Field(default_factory=list, max_length=8)
+
+
 class ExternalAccessRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -63,6 +110,7 @@ class ExternalAccessRequest(BaseModel):
     expires_at: datetime
     paths: list[ExternalPathRule] = Field(min_length=1, max_length=64)
     arguments: list[ExternalArgumentUse] = Field(default_factory=list, max_length=64)
+    transactions: list[ExternalTransaction] = Field(default_factory=list, max_length=8)
 
     @field_validator("expires_at")
     @classmethod
@@ -83,6 +131,7 @@ class ExternalAccessGrant(BaseModel):
     command_display: list[str] = Field(default_factory=list)
     revoked_at: datetime | None = None
     signature: str = ""
+    transaction_identities: dict[str, FileIdentity] = Field(default_factory=dict)
 
 
 class AuditStatus(StrEnum):
