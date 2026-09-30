@@ -212,6 +212,14 @@ Git으로 추적됩니다. 추적된 프로젝트 가이드와 설정은 신뢰�
 [아키텍처](docs/architecture.md), [운영 가이드](docs/operations.md),
 [보안 정책](SECURITY.md)을 참고하세요.
 
+## Windows 호스트 문제 해결
+
+Windows의 `CreateProcessWithLogonW failed:1385`는 호스트 샌드박스의 로그온 정책 문제이며,
+HexaHarness 권한을 넓혀 해결하는 오류가 아닙니다. Skill은
+[Windows 진단·복구 지침](docs/windows.md)에 따라 작업을 보존하고 동일한 재시도를 멈춥니다.
+전역 Codex 설정이나 Windows 계정 권한은 자동 변경하지 않습니다. 여기서 IT는 회사 장비의
+전산·보안 정책 담당자이며, 개인 비관리 PC라면 해당 장비의 권한 있는 관리자입니다.
+
 ## 개발 및 검증
 
 ```bash

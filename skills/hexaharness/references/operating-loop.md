@@ -27,6 +27,12 @@ details internal unless they are needed for recovery or audit.
 - Commands are argument arrays and never shell strings. Do not add pipes, redirects, interpolation,
   or compound shell expressions as a shortcut.
 
+For Windows host-logon error 1385, use the [host failure guide](../../../docs/windows.md).
+HexaHarness approval flags cannot repair a host that rejects process creation. Preserve pending
+actions, stop unchanged retries, and record the blocker only if the runtime is reachable through
+an already permitted, in-scope route. Do not wrap commands in approved prefixes to evade the host
+boundary, alter global sandbox settings, or grant Windows account rights as a project fix.
+
 Checkpoint after meaningful steps:
 
 ```text

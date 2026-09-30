@@ -41,6 +41,10 @@ material work. Pick the task kind internally: `change` for implementation/design
   relevant check. Ordinary failures keep the task active. Stop and preserve evidence when a real
   budget, timeout, repeated-failure trip wire, or emergency stop blocks progress. Retries repeat
   identical argv and are only for plausible transient failures.
+- If the host reports Windows `CreateProcessWithLogonW failed:1385` or
+  `ERROR_LOGON_TYPE_NOT_GRANTED`, follow [Windows host failures](../../docs/windows.md).
+  Stop unchanged retries; do not treat this as a project-code failure or bypass the host sandbox.
+  If HexaHarness never launched, report that limit instead of claiming a saved checkpoint.
 - Checkpoint meaningful milestones or pauses, not every edit. `complete` runs required sensors;
   do not duplicate the full suite immediately beforehand unless a release gate needs it. Use
   additional review only when deterministic checks cannot answer a material acceptance question.

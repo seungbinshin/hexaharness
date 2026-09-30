@@ -90,6 +90,11 @@ policy may impose a stricter boundary and always take precedence.
 
 ## Failure handling
 
+Distinguish host launch failures from project-command failures. For Windows logon error 1385,
+follow [windows.md](windows.md): stop unchanged retries, retain checkpoints, and diagnose the host
+without widening approvals or rewriting global sandbox settings. The runtime cannot record a
+failure that prevented it from starting; a passing project `doctor` is not a host-sandbox check.
+
 CLI retry repeats the same argument array and is appropriate only for plausibly transient failures.
 Agentic repair is a higher-level loop: inspect retained evidence, identify the cause, change the code
 or harness, run the narrow check again, and then run required sensors. Repeating an unchanged

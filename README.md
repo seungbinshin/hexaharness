@@ -216,6 +216,13 @@ for the internal approval and recovery protocol.
 See [architecture](docs/architecture.md), [operations](docs/operations.md), and the
 [security policy](SECURITY.md).
 
+## Windows host troubleshooting
+
+Windows host error `CreateProcessWithLogonW failed:1385` is a sandbox logon-policy issue, not
+an instruction to widen HexaHarness permissions. The skill follows the
+[Windows diagnosis and recovery guide](docs/windows.md): preserve work, stop unchanged retries,
+and distinguish a host repair from a project fix. It does not modify global Codex/Windows settings.
+
 ## Development
 
 ```bash

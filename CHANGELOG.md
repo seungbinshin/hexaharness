@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Added Skill and operator guidance for Windows host sandbox error 1385: distinguish host launch
+  failures from project failures, avoid repeated retries and approval-prefix bypasses, and preserve
+  checkpoints. Documented evidence-based logon-right diagnosis and separately authorized remedies.
+- No runtime, host configuration, account-right, or sandbox-backend changes.
+
 ## 0.3.0 - 2026-09-30
 
 - Added explicitly approved, task-scoped external access with per-operation paths, exact command
