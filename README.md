@@ -110,6 +110,22 @@ Authorization already given for the exact action and target remains valid across
 If approval is declined, the agent cancels the staged action and records the reason. Approval waits
 do not consume the execution time budget; the user does not need to repair internal state.
 
+## Approved external operational files
+
+External paths remain denied by default. For a specific authorized workflow, the agent can record
+an expiring, task-bound grant for selected files and operations, then bind it to the exact command.
+Read-only discovery is separate from issuance or packaging writes. Transaction rules can enumerate
+the registry, new profile, and narrowly named lock, temporary, and recovery files without opening
+the whole directory.
+
+Commands using a grant discard stdout/stderr before capture, retain execution metadata, and use the
+existing one-time execution and reconciliation protocol for mutations. The agent must review the
+actual tool and all indirect file dependencies: this is a preflight policy, not a syscall sandbox.
+Host permissions and explicit denials still apply. Existing projects need no reinitialization.
+
+See [external-access setup and limits](docs/external-access.md). A grant's lifetime is separate from
+the validity period of a profile being issued; no real service access is enabled by installation.
+
 ## Project lifecycle
 
 1. **Discover** — inspect instructions, code, tests, history, and active checkpoints.

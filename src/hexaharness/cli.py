@@ -18,19 +18,31 @@ from hexaharness.config import (
 )
 from hexaharness.errors import HexaHarnessError, PolicyBlockedError, VerificationFailedError
 from hexaharness.events import record_event
+from hexaharness.external_access import (
+    grant_external_access,
+    load_access_grant,
+    revoke_external_access,
+)
 from hexaharness.io import redact_argv, redact_text_using_argv
 from hexaharness.learning import record_learning
 from hexaharness.models import (
     AuditStatus,
+    ExternalAccessRequest,
     FailureClass,
     HarnessLayer,
+    PathOperation,
     PolicyDecision,
     TaskKind,
 )
 from hexaharness.paths import find_project_root
 from hexaharness.policy import evaluate_command, evaluate_path
 from hexaharness.retention import apply_prune, plan_prune
-from hexaharness.runner import escalate_task, new_external_action_step, run_task_command
+from hexaharness.runner import (
+    escalate_task,
+    needs_external_checkpoint,
+    new_external_action_step,
+    run_task_command,
+)
 from hexaharness.scaffold import initialize_project
 from hexaharness.sensors import run_sensors
 from hexaharness.state import (
@@ -56,6 +68,10 @@ app = typer.Typer(
     no_args_is_help=True,
     pretty_exceptions_enable=False,
 )
+
+AccessOption = Annotated[
+    str | None, typer.Option("--access-grant", help="Approved task-scoped external access ID.")
+]
 
 RootOption = Annotated[
     Path | None,
@@ -282,12 +298,50 @@ def checkpoint(
 
 
 @app.command(
+    "grant-external", context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
+def grant_external(
+    ctx: typer.Context,
+    task_id: Annotated[str, typer.Argument()],
+    scope: Annotated[Path, typer.Option(help="Project-local JSON scope; no secret values.")],
+    root: RootOption = None,
+    approved: Annotated[
+        bool, typer.Option(help="Record explicit approval of this scope and exact command.")
+    ] = False,
+) -> None:
+    """Record a narrow external-access approval; this does not grant host OS permissions."""
+    project_root = _project_root(root)
+    candidate = scope if scope.is_absolute() else project_root / scope
+    if not candidate.resolve().is_relative_to(project_root.resolve()) or candidate.is_symlink():
+        raise typer.BadParameter("scope document must be a regular project-local file")
+    argv = list(ctx.args)
+    if argv and argv[0] == "--":
+        argv = argv[1:]
+    request = ExternalAccessRequest.model_validate_json(candidate.read_text(encoding="utf-8"))
+    _emit_json(
+        grant_external_access(project_root, task_id, request, approved=approved, argv=argv or None)
+    )
+
+
+@app.command("revoke-external")
+def revoke_external(
+    task_id: Annotated[str, typer.Argument()],
+    grant_id: Annotated[str, typer.Argument()],
+    root: RootOption = None,
+) -> None:
+    """Revoke a grant for subsequent checks; running processes use the emergency stop."""
+    revoke_external_access(_project_root(root), task_id, grant_id)
+    _emit_json({"grant_id": grant_id, "revoked": True})
+
+
+@app.command(
     "prepare-external", context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
 )
 def prepare_external(
     ctx: typer.Context,
     task_id: Annotated[str, typer.Argument()],
     root: RootOption = None,
+    access_grant: AccessOption = None,
 ) -> None:
     """Durably stage one exact human-gated action before requesting approval."""
     argv = list(ctx.args)
@@ -297,7 +351,14 @@ def prepare_external(
         raise typer.BadParameter("provide an external command after `--`")
     project_root = _project_root(root)
     config = load_config(project_root)
-    outcome = evaluate_command(config, argv, project_root=project_root)
+    access = load_access_grant(project_root, task_id, access_grant) if access_grant else None
+    if access is not None and not needs_external_checkpoint(config, argv, access):
+        raise PolicyBlockedError(
+            "read-only external grants use run directly; no mutation is staged"
+        )
+    outcome = evaluate_command(
+        config, argv, project_root=project_root, task_id=task_id, access=access
+    )
     if outcome.decision == PolicyDecision.DENY:
         raise PolicyBlockedError(
             f"external action is denied: {redact_text_using_argv(outcome.reason, argv)}"
@@ -307,7 +368,7 @@ def prepare_external(
             "prepare-external only accepts an ask-gated action that requires human approval"
         )
     with task_lock(project_root, task_id):
-        pending_step = new_external_action_step(project_root, task_id, argv)
+        pending_step = new_external_action_step(project_root, task_id, argv, access=access)
         state = stage_external_action(project_root, task_id, pending_step=pending_step)
     redacted = redact_argv(argv)
     record_event(
@@ -344,6 +405,7 @@ def run(
     ] = False,
     retries: Annotated[int, typer.Option(min=0)] = 0,
     timeout: Annotated[int | None, typer.Option(min=1)] = None,
+    access_grant: AccessOption = None,
 ) -> None:
     """Execute one policy-gated command without a shell; pass it after `--`."""
     argv = list(ctx.args)
@@ -362,6 +424,7 @@ def run(
         reviewed=reviewed,
         retries=retries,
         timeout_seconds=timeout,
+        access_grant=access_grant,
     )
     _emit_json(result)
     if result.exit_code != 0 or result.timed_out or result.stopped:
@@ -582,35 +645,72 @@ def policy_check(
         Path | None, typer.Option(help="Path to evaluate instead of a command.")
     ] = None,
     write: Annotated[bool, typer.Option(help="Evaluate a write rather than a read.")] = False,
+    operation: Annotated[
+        PathOperation | None, typer.Option(help="Explicit external path operation.")
+    ] = None,
+    access_grant: AccessOption = None,
 ) -> None:
     """Evaluate a command or path without performing the action."""
     project_root = _project_root(root)
     config = load_config(project_root)
     if task_id is not None:
         load_task(project_root, task_id)
+    if access_grant and not task_id:
+        raise typer.BadParameter("--access-grant requires --task-id")
+    access = (
+        load_access_grant(project_root, task_id, access_grant) if task_id and access_grant else None
+    )
+    if operation is not None:
+        if write and operation not in {
+            PathOperation.CREATE,
+            PathOperation.REPLACE,
+            PathOperation.DELETE,
+        }:
+            raise typer.BadParameter("--write conflicts with a read-only --operation")
+        write = operation in {PathOperation.CREATE, PathOperation.REPLACE, PathOperation.DELETE}
     if path is not None:
-        outcome = evaluate_path(config, project_root, path, write=write)
+        outcome = evaluate_path(
+            config,
+            project_root,
+            path,
+            write=write,
+            operation=operation,
+            task_id=task_id,
+            access=access,
+        )
         policy_reason = outcome.reason
-        subject: Any = {"path": str(path), "write": write}
+        subject: Any = {
+            "path": str(path),
+            "write": write,
+            "operation": operation,
+            "access_grant": access_grant,
+        }
         event_type = "policy.path"
         candidate = path if path.is_absolute() else project_root / path
         try:
             canonical_path = candidate.resolve().relative_to(project_root).as_posix()
         except ValueError:
             canonical_path = "<outside-project>"
-        event_subject: dict[str, Any] = {"path": canonical_path, "write": write}
+        event_subject: dict[str, Any] = {
+            "path": canonical_path,
+            "write": write,
+            "operation": operation,
+            "access_grant": access_grant,
+        }
     else:
         argv = list(ctx.args)
         if argv and argv[0] == "--":
             argv = argv[1:]
         if not argv:
             raise typer.BadParameter("provide --path or a command after `--`")
-        outcome = evaluate_command(config, argv, project_root=project_root)
+        outcome = evaluate_command(
+            config, argv, project_root=project_root, task_id=task_id, access=access
+        )
         policy_reason = redact_text_using_argv(outcome.reason, argv)
         redacted = redact_argv(argv)
         subject = {"argv": redacted}
         event_type = "policy.command-check"
-        event_subject = {"argv": redacted}
+        event_subject = {"argv": redacted, "access_grant": access_grant}
     authorization = None
     if outcome.decision == PolicyDecision.ASK:
         authorization = "human-approval" if outcome.requires_human_approval else "agent-review"
@@ -630,6 +730,7 @@ def policy_check(
         and write
         and task_id is not None
         and outcome.decision == PolicyDecision.ALLOW
+        and canonical_path != "<outside-project>"
     ):
         observation = record_write_observation(project_root, task_id, path)
         subject["write_observation_id"] = observation.observation_id

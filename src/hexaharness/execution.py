@@ -63,7 +63,8 @@ def execute_capture(
     task_id: str,
     label: str,
     argv: list[str],
-    timeout_seconds: int,
+    timeout_seconds: float,
+    suppress_output: bool = False,
 ) -> CapturedExecution:
     redacted = redact_argv(argv)
     # The stable suffix groups equivalent command shapes without making the filename
@@ -85,8 +86,8 @@ def execute_capture(
         process = subprocess.Popen(
             argv,
             cwd=project_root,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL if suppress_output else subprocess.PIPE,
+            stderr=subprocess.DEVNULL if suppress_output else subprocess.PIPE,
             encoding="utf-8",
             errors="replace",
             text=True,
@@ -100,7 +101,9 @@ def execute_capture(
                 timed_out = True
                 _stop_process_group(process)
                 stdout, stderr = process.communicate()
-                stderr = f"{stderr}\ncommand timed out after {timeout_seconds} seconds".strip()
+                stderr = (
+                    f"{stderr or ''}\ncommand timed out after {timeout_seconds:g} seconds".strip()
+                )
                 break
             try:
                 stdout, stderr = process.communicate(timeout=min(0.1, remaining))
@@ -110,13 +113,21 @@ def execute_capture(
                     stopped = True
                     _stop_process_group(process)
                     stdout, stderr = process.communicate()
-                    stderr = f"{stderr}\nemergency stop interrupted the command".strip()
+                    stderr = f"{stderr or ''}\nemergency stop interrupted the command".strip()
                     break
         exit_code = process.returncode
     except FileNotFoundError as error:
         exit_code = 127
         stderr = f"command not found: {error.filename}"
     duration = time.monotonic() - started
+    stdout, stderr = stdout or "", stderr or ""
+    if suppress_output:
+        stdout = "<output suppressed for external access>"
+        stderr = (
+            "command timed out"
+            if timed_out
+            else ("emergency stop interrupted the command" if stopped else "")
+        )
     stdout = redact_text_using_argv(stdout, argv)
     stderr = redact_text_using_argv(stderr, argv)
     environment_secrets = sensitive_environment_values(os.environ)

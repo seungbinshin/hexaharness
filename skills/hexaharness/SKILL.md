@@ -52,6 +52,13 @@ remain authoritative. For external or hard-to-reverse actions, reuse existing au
 when it covers the exact action and target; otherwise finish local preparation and ask immediately
 before execution. Never ask again merely because a new checkpoint was created.
 
+If a task needs operational files outside the repository, read
+[external access](../../docs/external-access.md) before accessing them. Start with metadata and
+selected read-only files; request a separate, expiring scope for writes. Inspect transitive file
+dependencies without invoking an unapproved loader. Use only a reviewed, exactly bound command for
+external writes and keep secrets out of chat, argv, logs, and receipts. Do not widen the project
+root or global rules to get around a denial.
+
 Stage external actions with `prepare-external`, execute the identical argv once after authorization,
 and verify the external result. Reconcile uncertain results before any retry. `--approved` records
 authorization already given; `--reviewed` records inspection of an unknown local command. Neither

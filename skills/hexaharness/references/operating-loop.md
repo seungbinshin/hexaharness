@@ -36,6 +36,21 @@ Checkpoint after meaningful steps:
 
 Do not invent usage values. Record zero when the host exposes no measurement.
 
+## Approved external paths
+
+Follow [external-access setup](../../../docs/external-access.md) for task-scoped exceptions.
+Supply the same `--access-grant <id>` to `policy-check`, `prepare-external`, and `run`. Path checks
+use explicit `--operation stat|list|read|create|replace|delete`; an allowed path query is not
+authorization for arbitrary host edits. Grant-based writes execute only the reviewed command.
+Otherwise read-only command grants run directly with `run --approved`, without staging a mutation.
+A read-only file scope does not downgrade a command already classified as an external mutation.
+The flags record existing authorization; they do not acquire it.
+
+External stdout/stderr is discarded. Have the reviewed tool write only safe, selected verification
+fields to project-local evidence. For an uncertain mutation, retain its reconciliation marker and
+use a separate read-only grant to inspect state. Explicit reactivation preserves the marker and
+budgets; do not rerun the issuer until reconciliation is recorded.
+
 ## Cross an approval boundary
 
 After local verification, stage one exact external action without executing it:

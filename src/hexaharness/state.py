@@ -693,6 +693,8 @@ def save_task(project_root: Path, state: TaskState) -> None:
                 raise PolicyBlockedError(
                     "task status changes must use the validated status transition API"
                 )
+            if current.external_access != state.external_access:
+                raise PolicyBlockedError("external grants must use the approval lifecycle")
             if (
                 current.kind != state.kind
                 or current.approval_wait_seconds != state.approval_wait_seconds

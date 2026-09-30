@@ -4,11 +4,9 @@ import hashlib
 import hmac
 import json
 import math
-import os
 import re
 import secrets
 import shlex
-import stat
 from pathlib import Path
 from typing import NoReturn
 
@@ -16,14 +14,18 @@ from hexaharness.config import ensure_configuration_current, ensure_configuratio
 from hexaharness.errors import BudgetExceededError, HarnessStoppedError, PolicyBlockedError
 from hexaharness.events import record_event
 from hexaharness.execution import execute_capture
+from hexaharness.external_access import binding_key as _external_action_key
+from hexaharness.external_access import has_external_writes, load_access_grant
 from hexaharness.io import redact_argv, redact_text_using_argv, write_json
 from hexaharness.models import (
     CommandResult,
     EscalationPacket,
+    ExternalAccessGrant,
     HarnessConfig,
     PolicyDecision,
     TaskState,
     TaskStatus,
+    utc_now,
 )
 from hexaharness.paths import HarnessPaths
 from hexaharness.policy import evaluate_command
@@ -33,7 +35,6 @@ from hexaharness.state import (
     VERIFY_EXTERNAL_ACTION_RESULT,
     checkpoint_task,
     configuration_lock,
-    harness_lock,
     has_external_action_marker,
     load_task,
     mark_external_action_returned,
@@ -161,29 +162,6 @@ def execution_time_remaining(project_root: Path, config: HarnessConfig, state: T
     return max(1, math.ceil(remaining))
 
 
-def _external_action_key(project_root: Path) -> bytes:
-    key_path = HarnessPaths(project_root).external_action_key
-    with harness_lock(project_root):
-        if key_path.is_file():
-            if os.name != "nt" and stat.S_IMODE(key_path.stat().st_mode) & 0o077:
-                raise ValueError("external-action binding key permissions must be owner-only")
-            key = key_path.read_bytes()
-            if len(key) != 32:
-                raise ValueError("external-action binding key is invalid")
-            return key
-        key = secrets.token_bytes(32)
-        flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
-        if hasattr(os, "O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
-        descriptor = os.open(key_path, flags, 0o600)
-        try:
-            os.write(descriptor, key)
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
-        return key
-
-
 def external_action_nonce(step: str | None) -> str:
     if step is None or (match := EXTERNAL_ACTION_TOKEN_PATTERN.search(step)) is None:
         raise PolicyBlockedError("external action is missing its one-time binding")
@@ -197,12 +175,16 @@ def format_external_action_step(
     argv: list[str],
     *,
     nonce: str,
+    access: ExternalAccessGrant | None = None,
 ) -> str:
     """Bind a redacted checkpoint display to exact argv with a local keyed digest."""
     if not re.fullmatch(r"[0-9a-f]{32}", nonce):
         raise ValueError("external-action nonce must be 16 lowercase hexadecimal bytes")
+    binding: dict[str, object] = {"argv": argv, "nonce": nonce, "phase": prefix, "task_id": task_id}
+    if access is not None:
+        binding["access"] = access.signature
     serialized = json.dumps(
-        {"argv": argv, "nonce": nonce, "phase": prefix, "task_id": task_id},
+        binding,
         ensure_ascii=False,
         separators=(",", ":"),
         sort_keys=True,
@@ -215,13 +197,27 @@ def format_external_action_step(
     )
 
 
-def new_external_action_step(project_root: Path, task_id: str, argv: list[str]) -> str:
+def new_external_action_step(
+    project_root: Path, task_id: str, argv: list[str], *, access: ExternalAccessGrant | None = None
+) -> str:
     return format_external_action_step(
         project_root,
         task_id,
         PENDING_EXTERNAL_ACTION,
         argv,
         nonce=secrets.token_hex(16),
+        access=access,
+    )
+
+
+def needs_external_checkpoint(
+    config: HarnessConfig, argv: list[str], access: ExternalAccessGrant | None
+) -> bool:
+    # A read-only file grant cannot downgrade a known publication/service mutation.
+    return (
+        access is None
+        or has_external_writes(access)
+        or evaluate_command(config, argv).requires_human_approval
     )
 
 
@@ -235,6 +231,7 @@ def _run_task_command_locked(
     reviewed: bool = False,
     retries: int = 0,
     timeout_seconds: int | None = None,
+    access_grant: str | None = None,
 ) -> CommandResult:
     ensure_configuration_current(project_root, config)
     ensure_configuration_ready(config, project_root)
@@ -259,7 +256,10 @@ def _run_task_command_locked(
             evidence_paths=state.artifacts,
         )
 
-    outcome = evaluate_command(config, argv, project_root=project_root)
+    access = load_access_grant(project_root, task_id, access_grant) if access_grant else None
+    outcome = evaluate_command(
+        config, argv, project_root=project_root, task_id=task_id, access=access
+    )
     redacted_argv = redact_argv(argv)
     policy_reason = redact_text_using_argv(outcome.reason, argv)
     record_event(
@@ -272,6 +272,7 @@ def _run_task_command_locked(
             "argv": redacted_argv,
             "approved": approved,
             "reviewed": reviewed,
+            "access_grant": access_grant,
         },
     )
     if outcome.decision == PolicyDecision.DENY:
@@ -284,6 +285,7 @@ def _run_task_command_locked(
             PENDING_EXTERNAL_ACTION,
             argv,
             nonce=nonce,
+            access=access,
         )
         if state.next_step != exact_pending_step:
             raise PolicyBlockedError(
@@ -308,7 +310,10 @@ def _run_task_command_locked(
             )
 
     human_gated_action = (
-        outcome.decision == PolicyDecision.ASK and outcome.requires_human_approval and approved
+        outcome.decision == PolicyDecision.ASK
+        and outcome.requires_human_approval
+        and approved
+        and needs_external_checkpoint(config, argv, access)
     )
     # Check before marking an external action started. A preflight refusal has no
     # uncertain remote side effect and must leave the staged action recoverable.
@@ -321,10 +326,10 @@ def _run_task_command_locked(
             )
         nonce = external_action_nonce(state.next_step)
         pending_step = format_external_action_step(
-            project_root, task_id, PENDING_EXTERNAL_ACTION, argv, nonce=nonce
+            project_root, task_id, PENDING_EXTERNAL_ACTION, argv, nonce=nonce, access=access
         )
         reconcile_step = format_external_action_step(
-            project_root, task_id, RECONCILE_EXTERNAL_ACTION, argv, nonce=nonce
+            project_root, task_id, RECONCILE_EXTERNAL_ACTION, argv, nonce=nonce, access=access
         )
         state = prepare_external_action(
             project_root,
@@ -359,13 +364,21 @@ def _run_task_command_locked(
                 "emergency stop became active; remaining command attempts were cancelled"
             )
         remaining = execution_time_remaining(project_root, config, state)
-        execution_timeout = min(timeout_seconds or remaining, remaining)
+        execution_timeout: float = min(timeout_seconds or remaining, remaining)
+        if access is not None:
+            access = load_access_grant(project_root, task_id, access.grant_id)
+            execution_timeout = min(
+                execution_timeout, (access.scope.expires_at - utc_now()).total_seconds()
+            )
+            if execution_timeout <= 0:
+                raise PolicyBlockedError("external grant expired before execution")
         captured = execute_capture(
             project_root,
             task_id=task_id,
             label=f"command-attempt-{attempt + 1}",
             argv=argv,
-            timeout_seconds=max(1, execution_timeout),
+            timeout_seconds=execution_timeout,
+            suppress_output=access is not None,
         )
         attempts_made += 1
         state.attempts += 1
@@ -389,6 +402,7 @@ def _run_task_command_locked(
                     VERIFY_EXTERNAL_ACTION_RESULT,
                     argv,
                     nonce=external_action_nonce(reconcile_step),
+                    access=access,
                 )
                 state = mark_external_action_returned(
                     project_root,
@@ -530,6 +544,7 @@ def run_task_command(
     reviewed: bool = False,
     retries: int = 0,
     timeout_seconds: int | None = None,
+    access_grant: str | None = None,
 ) -> CommandResult:
     with task_lock(project_root, task_id):
         with configuration_lock(project_root):
@@ -542,4 +557,5 @@ def run_task_command(
                 reviewed=reviewed,
                 retries=retries,
                 timeout_seconds=timeout_seconds,
+                access_grant=access_grant,
             )

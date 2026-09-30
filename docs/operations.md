@@ -63,6 +63,14 @@ place because the remote system may still have changed partially. The agent must
 state and use `checkpoint --resolve-external-action` with a completed resolution and new evidence
 before any retry. These markers are runtime-owned and must not be written by hand.
 
+## Scoped external operations
+
+Use [external-access.md](external-access.md) when a reviewed workflow needs files outside the
+repository. `grant-external` records exact scope and command approval; `--access-grant` supplies the
+same grant to path checks, command checks, preparation, and execution. `revoke-external` disables
+future use. Do not widen global path rules, move the project root, or treat `--approved` as a deny
+override. Read-only grants do not imply mutation authority.
+
 ## Default autonomy profile
 
 The generated policy is designed for productive local operation:

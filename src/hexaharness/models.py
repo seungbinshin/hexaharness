@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -30,6 +30,59 @@ class TaskKind(StrEnum):
     CHANGE = "change"
     REVIEW = "review"
     RELEASE = "release"
+
+
+class PathOperation(StrEnum):
+    STAT = "stat"
+    LIST = "list"
+    READ = "read"
+    CREATE = "create"
+    REPLACE = "replace"
+    DELETE = "delete"
+
+
+class ExternalPathRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    operations: list[PathOperation] = Field(min_length=1)
+    children: list[str] = Field(default_factory=list, max_length=64)
+
+
+class ExternalArgumentUse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    operation: PathOperation | Literal["transaction"]
+
+
+class ExternalAccessRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    purpose: str = Field(min_length=1, max_length=240)
+    expires_at: datetime
+    paths: list[ExternalPathRule] = Field(min_length=1, max_length=64)
+    arguments: list[ExternalArgumentUse] = Field(default_factory=list, max_length=64)
+
+    @field_validator("expires_at")
+    @classmethod
+    def aware_expiry(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("external access expiry must include a timezone")
+        return value.astimezone(UTC)
+
+
+class ExternalAccessGrant(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    grant_id: str
+    task_id: str
+    scope: ExternalAccessRequest
+    approved_at: datetime
+    command_hmac: str | None = None
+    command_display: list[str] = Field(default_factory=list)
+    revoked_at: datetime | None = None
+    signature: str = ""
 
 
 class AuditStatus(StrEnum):
@@ -290,6 +343,7 @@ class TaskState(BaseModel):
     external_action_phase_started_at: datetime | None = None
     external_action_nonces: list[str] = Field(default_factory=list)
     approval_wait_seconds: float = Field(default=0.0, ge=0)
+    external_access: list[ExternalAccessGrant] = Field(default_factory=list)
     artifacts: list[str] = Field(default_factory=list)
     artifact_evidence: list[ArtifactEvidence] = Field(default_factory=list)
     write_observations: list[WriteObservation] = Field(default_factory=list)

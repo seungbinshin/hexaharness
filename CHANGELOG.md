@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0 - 2026-09-30
+
+- Added explicitly approved, task-scoped external access with per-operation paths, exact command
+  binding, a maximum 24-hour grant lifetime, revocation, and signed local approval records.
+- Applied grants consistently to path checks and external command operands; retained default deny,
+  protected targets, host permissions, and the one-time mutation/reconciliation protocol.
+- Added one-level transaction filename rules for registry, profile, lock, temporary, and journal
+  operations without recursive directory access.
+- Suppressed stdout/stderr at the process boundary for grant-based commands so file-loaded secrets
+  are never captured as command output; policy queries do not read or hash external file contents.
+- Documented read-only discovery, separately approved issuance/packaging, and the distinction between
+  preflight authorization and actual operating-system enforcement in the Skill and both READMEs.
+
 ## 0.2.1 - 2026-09-05
 
 - Simplified the primary skill and removed a duplicate reference router. Small changes no longer

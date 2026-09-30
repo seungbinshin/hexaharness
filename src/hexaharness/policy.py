@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-from hexaharness.models import HarnessConfig, PolicyDecision
+from hexaharness.errors import PolicyBlockedError
+from hexaharness.external_access import external_path_reason, validate_access_grant
+from hexaharness.models import ExternalAccessGrant, HarnessConfig, PathOperation, PolicyDecision
 
 
 @dataclass(frozen=True)
@@ -464,7 +466,13 @@ def _long_option_value_matches(argv: list[str], full_name: str, expected: str) -
     return False
 
 
-def _command_path_escape_reason(argv: list[str], project_root: Path) -> str | None:
+def _command_path_escape_reason(
+    argv: list[str],
+    project_root: Path,
+    config: HarnessConfig,
+    access: ExternalAccessGrant | None = None,
+    task_id: str | None = None,
+) -> str | None:
     """Reject explicit command arguments that resolve outside the configured project root."""
     root = project_root.resolve()
     is_env = bool(argv) and _command_name(argv[0]) == "env"
@@ -493,6 +501,18 @@ def _command_path_escape_reason(argv: list[str], project_root: Path) -> str | No
             try:
                 resolved.relative_to(root)
             except ValueError:
+                if access is not None:
+                    use = next(
+                        (use for use in access.scope.arguments if Path(use.path) == resolved), None
+                    )
+                    if use is not None:
+                        target = expanded if expanded.is_absolute() else root / expanded
+                        outcome = _external_path_outcome(
+                            config, root, target, access, task_id, use.operation
+                        )
+                        if outcome.decision == PolicyDecision.ALLOW:
+                            continue
+                        return outcome.reason
                 return f"command argument escapes the configured project root: {argument}"
     return None
 
@@ -909,22 +929,39 @@ def evaluate_command(
     argv: list[str],
     *,
     project_root: Path | None = None,
+    task_id: str | None = None,
+    access: ExternalAccessGrant | None = None,
 ) -> PolicyOutcome:
     if not argv:
         return PolicyOutcome(PolicyDecision.DENY, "empty commands are invalid")
+    if access is not None:
+        if project_root is None:
+            return PolicyOutcome(
+                PolicyDecision.DENY, "external grants require project and task context"
+            )
+        try:
+            validate_access_grant(project_root, task_id, access, argv)
+        except (PolicyBlockedError, ValueError) as error:
+            return PolicyOutcome(PolicyDecision.DENY, str(error))
+        if reason := _external_write_scope_reason(config, access):
+            return PolicyOutcome(PolicyDecision.DENY, reason)
     effective = _effective_argv(argv)
     classified = _git_subcommand_argv(effective)
     risk_shapes = _risk_command_shapes(config, argv)
     trusted_shapes = (argv, effective, classified)
     if project_root is not None:
         for command_shape in (argv, effective):
-            if reason := _command_path_escape_reason(command_shape, project_root):
+            if reason := _command_path_escape_reason(
+                command_shape, project_root, config, access, task_id
+            ):
                 return PolicyOutcome(PolicyDecision.DENY, reason)
         executable_shapes = [argv]
         if nested := _env_nested_argv(argv):
             executable_shapes.append(nested)
         for command_shape in executable_shapes:
-            if reason := _explicit_executable_reason(config, command_shape, project_root):
+            if access is None and (
+                reason := _explicit_executable_reason(config, command_shape, project_root)
+            ):
                 return PolicyOutcome(PolicyDecision.ASK, reason, requires_human_approval=True)
     for shape in risk_shapes:
         if reason := _intrinsic_deny_reason(shape):
@@ -932,6 +969,15 @@ def evaluate_command(
     for prefix in config.policy.deny_execute:
         if any(_matches_prefix(shape, prefix) for shape in (*trusted_shapes, *risk_shapes)):
             return PolicyOutcome(PolicyDecision.DENY, f"matches deny prefix: {' '.join(prefix)}")
+    if access is not None:
+        underlying = evaluate_command(config, argv)
+        if underlying.decision == PolicyDecision.DENY:
+            return underlying
+        return PolicyOutcome(
+            PolicyDecision.ASK,
+            "exact command uses a task-scoped external grant",
+            requires_human_approval=True,
+        )
     exact_original_allow = any(argv == prefix for prefix in config.policy.allow_execute)
     exact_effective_allow = any(effective == prefix for prefix in config.policy.allow_execute)
     for shape in risk_shapes:
@@ -968,19 +1014,91 @@ def _matches_path(path: str, patterns: list[str]) -> bool:
     return any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)
 
 
+def _external_write_denied(config: HarnessConfig, target: Path) -> bool:
+    basename = target.name.casefold()
+    return (
+        basename == ".env"
+        or basename.startswith(".env.")
+        or "credential" in basename
+        or "secret" in basename
+        or basename in {".npmrc", ".pypirc"}
+        or _matches_path(target.as_posix(), config.policy.deny_write_paths)
+        or _matches_path(target.name, config.policy.deny_write_paths)
+    )
+
+
+def _external_write_scope_reason(config: HarnessConfig, access: ExternalAccessGrant) -> str | None:
+    # Families exclude denied targets. Preflight can inspect existing matches, not future I/O.
+    from hexaharness.external_access import WRITE_OPERATIONS, external_path
+
+    try:
+        for rule in access.scope.paths:
+            if not WRITE_OPERATIONS.intersection(rule.operations):
+                continue
+            anchor = external_path(Path(rule.path))
+            targets = [anchor] if not rule.children else []
+            for name in rule.children:
+                targets.append(anchor / name.replace("*", "pending"))
+                if "*" in name:
+                    targets.extend(anchor.glob(name))
+            for target in targets:
+                external_path(target)
+                if _external_write_denied(config, target):
+                    return "external scope includes a denied write target"
+    except (OSError, ValueError, RuntimeError) as error:
+        return str(error)
+    return None
+
+
+def _external_path_outcome(
+    config: HarnessConfig,
+    root: Path,
+    target: Path,
+    access: ExternalAccessGrant | None,
+    task_id: str | None,
+    operation: str,
+) -> PolicyOutcome:
+    if access is None:
+        return PolicyOutcome(PolicyDecision.DENY, "target escapes the configured project root")
+    try:
+        validate_access_grant(root, task_id, access)
+    except (PolicyBlockedError, ValueError) as error:
+        return PolicyOutcome(PolicyDecision.DENY, str(error))
+    if operation == "transaction" and (reason := _external_write_scope_reason(config, access)):
+        return PolicyOutcome(PolicyDecision.DENY, reason)
+    if operation in {"create", "replace", "delete"} and _external_write_denied(config, target):
+        return PolicyOutcome(PolicyDecision.DENY, "external target matches a denied write path")
+    reason = external_path_reason(access, target, operation)
+    if reason:
+        return PolicyOutcome(PolicyDecision.DENY, reason)
+    return PolicyOutcome(PolicyDecision.ALLOW, f"external {operation} covered by {access.grant_id}")
+
+
 def evaluate_path(
     config: HarnessConfig,
     project_root: Path,
     target: Path,
     *,
     write: bool,
+    operation: PathOperation | None = None,
+    task_id: str | None = None,
+    access: ExternalAccessGrant | None = None,
 ) -> PolicyOutcome:
     root = project_root.resolve()
     resolved = target.resolve() if target.is_absolute() else (root / target).resolve()
     try:
         relative = resolved.relative_to(root).as_posix()
     except ValueError:
-        return PolicyOutcome(PolicyDecision.DENY, "target escapes the configured project root")
+        if write and operation is None and access is not None:
+            return PolicyOutcome(
+                PolicyDecision.DENY,
+                "external writes require an explicit create, replace, or delete operation",
+            )
+        candidate = target if target.is_absolute() else root / target
+        return _external_path_outcome(config, root, candidate, access, task_id, operation or "read")
+
+    if operation is not None:
+        write = operation in {PathOperation.CREATE, PathOperation.REPLACE, PathOperation.DELETE}
 
     components = [part.casefold() for part in Path(relative).parts]
     basename = components[-1] if components else ""

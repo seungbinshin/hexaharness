@@ -36,3 +36,24 @@ task marker, changed phase, changed argument, or reused nonce therefore cannot r
 approval, while retained events do not expose an unkeyed digest of secret-bearing arguments. The
 runtime records reconciliation state before executing the action and requires external verification
 afterward, preventing an interrupted push or publication from being retried blindly.
+
+## Task-scoped external access
+
+An external-access grant is an explicit exception to the project-root boundary, not to command
+denials or host permissions. It is HMAC-bound to its task, project, operations, paths, expiry, and
+optional exact argv. No home/root grant or recursive wildcard is supported. Child rules apply to
+one directory level; symlink traversal and multiply linked files are rejected when checked.
+Protected vault/chat/Git/SSH paths remain excluded. A granted write cannot override denied write
+paths. Expiry and revocation are checked again before execution, and process timeout is capped by
+remaining grant lifetime. Revocation blocks future checks; use the emergency stop for an active run.
+
+Grant-based commands send stdout/stderr to the null device, including on failure, before any
+capture. Keep secrets out of argv, purpose text, scope manifests, and explicit receipt files too.
+External file contents are not read or hashed by policy checks. Review scripts may write selected
+nonsecret results to a local evidence file; never dump keys or token-bearing profiles into chat.
+
+These are cooperative preflight checks. Exact argv does not freeze a script's implementation or
+intercept its indirect filesystem/network operations. Read-only declarations must match reviewed
+tool behavior, and path validation cannot eliminate races after the check. The host sandbox and
+the issuer's locking, atomicity, idempotency, and recovery code remain necessary. Grants neither
+implement profile issuance nor certify production compatibility.
