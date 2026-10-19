@@ -5,6 +5,7 @@ import os
 import shlex
 import signal
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -37,7 +38,7 @@ def _stop_process_group(process: subprocess.Popen[str]) -> None:
     if process.poll() is not None:
         return
     try:
-        if os.name == "posix":
+        if sys.platform != "win32" and os.name == "posix":
             os.killpg(process.pid, signal.SIGTERM)
         elif os.name == "nt":  # pragma: no cover - exercised on Windows
             process.send_signal(getattr(signal, "CTRL_BREAK_EVENT", signal.SIGTERM))
@@ -49,7 +50,7 @@ def _stop_process_group(process: subprocess.Popen[str]) -> None:
         pass
 
     try:
-        if os.name == "posix":
+        if sys.platform != "win32" and os.name == "posix":
             os.killpg(process.pid, signal.SIGKILL)
         else:  # pragma: no cover - exercised on non-POSIX platforms
             process.kill()

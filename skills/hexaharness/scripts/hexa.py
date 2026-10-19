@@ -149,7 +149,8 @@ def environment_python(runtime_dir: Path) -> Path:
     """Return the platform-specific interpreter inside a virtual environment."""
     if sys.platform == "win32":
         return runtime_dir / "Scripts" / "python.exe"
-    return runtime_dir / "bin" / "python"
+    else:
+        return runtime_dir / "bin" / "python"
 
 
 def runtime_environment(environment: Mapping[str, str] | None = None) -> dict[str, str]:

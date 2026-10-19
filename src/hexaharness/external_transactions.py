@@ -46,7 +46,10 @@ def _private(path: Path, parent: Path, *, directory: bool = False) -> None:
     required = stat.S_ISDIR if directory else stat.S_ISREG
     if not required(info.st_mode):
         raise ValueError("transaction-type: unexpected file type")
-    if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != (0o700 if directory else 0o600):
+    owner_id = getattr(os, "geteuid", None)
+    if owner_id is None:
+        raise ValueError("transaction-platform: POSIX ownership is required")
+    if info.st_uid != owner_id() or stat.S_IMODE(info.st_mode) != (0o700 if directory else 0o600):
         raise ValueError("transaction-permissions: owner or owner-only mode mismatch")
     if info.st_dev != parent.stat().st_dev:
         raise ValueError("transaction-device: mount boundary rejected")
