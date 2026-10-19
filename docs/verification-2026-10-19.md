@@ -5,10 +5,11 @@ plugin versions remain 0.4.0. It is not a 1.0 release announcement or a provider
 
 ## Verified locally
 
-- Build, Ruff, strict mypy and the complete macOS regression suite passed: **348 passed,
+- Build, Ruff, strict mypy and the complete macOS regression suite passed: **349 passed,
   8 skipped**, **86.83%** branch-inclusive coverage, exceeding the existing 85% threshold.
-- The 47 improvement/host tests passed, including six reproduced and repaired cases where stored
+- The 48 improvement/host tests passed, including six reproduced and repaired cases where stored
   request, adapter, provider, receipt or usage data changed after settlement.
+  A further delayed-reservation test confirms storage time cannot extend the host-call deadline.
 - Legacy absent-field JSON/fingerprints remain covered. No approval-key rotation or project-wide
   budget increase was needed. Task continuations retain earlier usage and an absolute deadline.
 - A fresh wheel installation in a separate space/Unicode path completed the deterministic text
@@ -24,9 +25,10 @@ evidence-complete unattended outcomes are retained. A third must be real complet
 distinct, still-current artifact; editing notes solely to satisfy the counter is not evidence.
 This project's maturity audit does not certify a provider, consumer integration or OS sandbox.
 
-Some local files temporarily had no resident data. Hashing them while their metadata changed
-correctly invalidated evidence. After reads stabilized, all five original learning digests and
-their source events matched; no evidence was rewritten and no validation was relaxed.
+Some local files temporarily had no resident data, coinciding with evidence being rejected.
+Metadata changes during hydration are a plausible cause; a before/after trace for each rejection
+was not captured. After reads stabilized, all five original learning digests and their source
+events matched; no evidence was rewritten and no validation was relaxed.
 
 ## Remaining release conditions
 

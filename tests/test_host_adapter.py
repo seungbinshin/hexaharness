@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -92,6 +93,31 @@ def test_handoff_reserves_once_and_excludes_private_evaluator(host_experiment):
     assert state.tokens_used == 100 and state.cost_usd == 0.1 and state.tool_calls == 1
     with pytest.raises(PolicyBlockedError, match="intent"):
         prepare(root, task, goal="another purpose")
+
+
+def test_reservation_delay_cannot_extend_the_host_call_deadline(host_experiment, monkeypatch):
+    import hexaharness.host_adapter as adapter
+
+    root, task = host_experiment
+    clock = [adapter.utc_now()]
+    expected_deadline = clock[0] + timedelta(seconds=30)
+    original = adapter.request_candidate
+
+    def slow_reservation(*args, **kwargs):
+        result = original(*args, **kwargs)
+        clock[0] += timedelta(seconds=31)
+        return result
+
+    monkeypatch.setattr(adapter, "utc_now", lambda: clock[0])
+    monkeypatch.setattr(adapter, "request_candidate", slow_reservation)
+    transfer = prepare(root, task, timeout_seconds=30)
+    assert transfer.request.deadline_at <= expected_deadline
+    assert (
+        transfer.request.deadline_at < clock[0]
+    )  # The host must not dispatch an expired envelope.
+    state = load_task(root, task)
+    assert state.tokens_used == 100 and state.cost_usd == 0.1
+    assert state.improvement.requests["draft"].host_call.request == transfer.request
 
 
 @pytest.mark.parametrize(

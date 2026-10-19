@@ -22,6 +22,9 @@ never send it again. Reusing a key for another intent is rejected.
 
 The host must enforce the envelope through its actual provider and native controls. If it
 cannot enforce a requirement, leave the call undispatched and preserve the reservation.
+The deadline starts before reservation persistence, so slow storage cannot extend the call's
+allowance. A returned envelope can already be expired; the host must never dispatch it after
+its deadline. Its identity and reservation remain available for inspection and reconciliation.
 There is no runtime claim that a JSON envelope itself isolates a process or limits a remote bill.
 
 Submit `HostResult` through `--action host-result --key KEY --receipt-file FILE`. A receipt binds

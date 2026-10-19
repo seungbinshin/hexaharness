@@ -77,7 +77,11 @@ def prepare_host_request(
                 raise PolicyBlockedError("idempotency key already belongs to another host intent")
             _host_evidence(experiment, previous)
             return HostTransfer(created=False, request=call.request)
+        requested_at = utc_now()
         remaining = execution_time_remaining(root, config, state)
+        deadline = requested_at + timedelta(seconds=min(timeout_seconds, remaining))
+        if state.task_budget is not None:
+            deadline = min(deadline, state.task_budget.deadline_at)
         request_candidate(
             root,
             config,
@@ -99,10 +103,8 @@ def prepare_host_request(
             parents={parent: experiment.candidates[parent].text for parent in request.parents},
             max_tokens=max_tokens,
             max_cost_usd=max_cost_usd,
-            deadline_at=utc_now() + timedelta(seconds=min(timeout_seconds, remaining)),
+            deadline_at=deadline,
         )
-        if state.task_budget is not None:
-            envelope.deadline_at = min(envelope.deadline_at, state.task_budget.deadline_at)
         envelope.request_sha256 = _host_request_digest(envelope)
         request.host_call = HostCall(
             request=envelope, adapter=adapter, timeout_seconds=timeout_seconds
