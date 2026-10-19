@@ -8,7 +8,8 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
+from typing import TextIO
 
 import pytest
 
@@ -294,6 +295,31 @@ def test_configured_runtime_must_exist(tmp_path: Path) -> None:
         launcher.resolve_runtime(
             ROOT, {"HEXAHARNESS_RUNTIME_PYTHON": str(tmp_path / "missing-python")}
         )
+
+
+def test_first_use_installer_does_not_pollute_cli_stdout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    launcher = _load_launcher()
+    monkeypatch.setattr(
+        launcher.venv, "EnvBuilder", lambda **kwargs: SimpleNamespace(create=lambda path: None)
+    )
+
+    def install(
+        argv: list[str],
+        *,
+        check: bool,
+        cwd: Path,
+        env: dict[str, str],
+        stdout: TextIO | None = None,
+    ) -> None:
+        print("installer diagnostics", file=stdout)
+
+    monkeypatch.setattr(launcher.subprocess, "run", install)
+    launcher._create_runtime(ROOT, tmp_path / "runtime-test")
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "installer diagnostics\n"
 
 
 def test_windows_launcher_preserves_argv_and_child_exit(

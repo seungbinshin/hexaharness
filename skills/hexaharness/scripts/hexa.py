@@ -366,6 +366,7 @@ def _create_runtime(root: Path, runtime_dir: Path) -> None:
             check=True,
             cwd=root,
             env=pip_environment,
+            stdout=sys.stderr,
         )
         marker = {
             "fingerprint": runtime_dir.name.removeprefix("runtime-"),
