@@ -152,6 +152,12 @@ class HarnessPaths:
             reject_child_symlinks=True,
         )
 
+    def improvement_stop_file(self, task_id: str) -> Path:
+        return _validate_existing_file(
+            self.task_artifacts(task_id) / "improvement.cancel",
+            label="HexaHarness improvement cancellation",
+        )
+
     def validate_layout(self) -> None:
         """Reject managed symlinks and wrong path types before a harness operation mutates data."""
         _ = (

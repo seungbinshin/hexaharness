@@ -74,6 +74,7 @@ only-include = [
   "docs",
   "pyproject.toml",
   "runtime-requirements.txt",
+  "requirements-dev.lock",
   "skills",
   "src",
   "tests",
@@ -93,6 +94,7 @@ exclude = [
 ]
 
 [tool.ruff]
+required-version = "==0.16.5"
 line-length = 100
 target-version = "py312"
 
@@ -102,6 +104,7 @@ ignore = ["A005"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]
+"skills/hexaharness/scripts/hexa.py" = ["UP040"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -112,6 +115,7 @@ pretty = true
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"
 testpaths = ["tests"]
+pythonpath = ["src"]
 
 [tool.coverage.run]
 branch = true

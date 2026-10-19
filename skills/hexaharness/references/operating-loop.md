@@ -40,7 +40,10 @@ Checkpoint after meaningful steps:
   --artifact <path> --tokens <host-reported-count> --cost-usd <host-reported-cost>
 ```
 
-Do not invent usage values. Record zero when the host exposes no measurement.
+Do not invent usage values. Legacy checkpoints do not model unknown usage; leaving their
+measurement omitted is not evidence of a free call. The built-in improvement protocol records
+unknown usage explicitly and blocks further trials until it is reconciled. See
+[improvement](../../../docs/improvement.md) for reservation and submission semantics.
 
 ## Approved external paths
 

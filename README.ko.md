@@ -227,14 +227,37 @@ HexaHarness 권한을 넓혀 해결하는 오류가 아닙니다. Skill은
 
 ## 개발 및 검증
 
+[내장 개선 기능 preview](docs/improvement.md)는 같은 작업·설정·CLI·메인 스킬 안에서
+동작합니다. 현재 범위는 고정된 문자열 기준으로 텍스트 산출물을 비교하는 흐름이며,
+baseline 보존, 사용량 예약, 취소·복구와 기존 센서에 의한 채택 검증을 제공합니다.
+실행 코드 최적화와 실제 모델 어댑터는 아직 지원하지 않습니다.
+
 ```bash
-uv sync --locked
+uv sync --locked --python 3.12
 uv run ruff format --check .
 uv run ruff check .
 uv run mypy src skills/hexaharness/scripts/hexa.py
 uv run pytest --cov
 uv build
 ```
+
+Windows PowerShell에서는 Python 3.12를 명시합니다. 가상환경 활성화는 필요 없습니다.
+기존 `.venv`가 3.11이면 먼저 보존하고 아래 모든 명령에서 `.venv312` 같은 새 폴더를 사용하세요.
+
+```powershell
+py -3.12 -m venv .venv
+& .\.venv\Scripts\python.exe -m pip install --require-hashes -r requirements-dev.lock
+& .\.venv\Scripts\python.exe -m pip install --no-deps --no-build-isolation -e .
+& .\.venv\Scripts\python.exe -m ruff check .
+& .\.venv\Scripts\python.exe -m pytest
+```
+
+[Windows 안내](docs/windows.md)에 설치와 호스트 오류의 구분이 있습니다.
+`requirements-dev.lock`은 실제 포함된 파일이며 `uv.lock`에서
+`uv export --locked --all-groups --no-emit-project --output-file requirements-dev.lock`으로
+생성합니다. 수동 버전 목록을 따로 관리하지 않습니다. Ruff의 `required-version`도 잠긴
+버전과 일치합니다. 테스트는 `src`를 명시적으로 읽으므로 출시 전 새 환경의 wheel 설치도
+검증해야 합니다. 이 문서는 Windows 실기기 검증을 완료했다는 의미가 아닙니다.
 
 Skill 변경에는 Skill validator가 필요하며, 플러그인 변경 시 두 생태계의 manifest 버전을 동기화해야
 합니다. MIT License로 배포됩니다.

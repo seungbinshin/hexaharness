@@ -230,14 +230,37 @@ and distinguish a host repair from a project fix. It does not modify global Code
 
 ## Development
 
+The [built-in improvement preview](docs/improvement.md) uses the existing task, configuration,
+CLI and primary skill. It currently supports bounded text-artifact comparisons against a fixed
+literal rubric, with usage reservations, retained baseline, cancellation/recovery and a sensor
+promotion gate. It does not yet optimize executable code or provide a model adapter.
+
 ```bash
-uv sync --locked
+uv sync --locked --python 3.12
 uv run ruff format --check .
 uv run ruff check .
 uv run mypy src skills/hexaharness/scripts/hexa.py
 uv run pytest --cov
 uv build
 ```
+
+Windows PowerShell: select the interpreter explicitly; activation is unnecessary.
+If `.venv` already uses 3.11, preserve it and use a new directory such as `.venv312`
+in every command below instead.
+
+```powershell
+py -3.12 -m venv .venv
+& .\.venv\Scripts\python.exe -m pip install --require-hashes -r requirements-dev.lock
+& .\.venv\Scripts\python.exe -m pip install --no-deps --no-build-isolation -e .
+& .\.venv\Scripts\python.exe -m ruff check .
+& .\.venv\Scripts\python.exe -m pytest
+```
+
+See [Windows setup and host failures](docs/windows.md). `requirements-dev.lock` is generated
+from `uv.lock` with `uv export --locked --all-groups --no-emit-project --output-file requirements-dev.lock`;
+do not hand-edit it. Ruff's `required-version` matches the locked release. The runtime-only
+requirements remain separate from development dependencies. Tests load `src` explicitly;
+validate a built wheel in a fresh environment before release.
 
 Skill changes also require the skill validator; plugin changes require both ecosystem manifests to
 remain synchronized. Licensed under the MIT License.

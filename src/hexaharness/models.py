@@ -4,11 +4,30 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+)
+
+from hexaharness.improvement_models import ImprovementConfig, ImprovementState
 
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+class _ImprovementCompatibleModel(BaseModel):
+    @model_serializer(mode="wrap")
+    def _serialize_legacy_shape(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data: dict[str, Any] = handler(self)
+        # Preserve 0.4 wire contracts and configuration digests when the extension is unused.
+        if data.get("improvement") is None:
+            data.pop("improvement", None)
+        return data
 
 
 class PolicyDecision(StrEnum):
@@ -309,7 +328,7 @@ class RetentionConfig(BaseModel):
     keep_latest_completed_tasks: int = Field(default=50, ge=1)
 
 
-class HarnessConfig(BaseModel):
+class HarnessConfig(_ImprovementCompatibleModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: int = Field(default=2, ge=1)
@@ -321,6 +340,7 @@ class HarnessConfig(BaseModel):
     trip_wires: list[TripWireSpec]
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
     emergency_stop_file: str = ".hexaharness/STOP"
+    improvement: ImprovementConfig | None = None
 
     @field_validator("sensors")
     @classmethod
@@ -376,7 +396,7 @@ class WriteObservation(BaseModel):
     recorded_at: datetime = Field(default_factory=utc_now)
 
 
-class TaskState(BaseModel):
+class TaskState(_ImprovementCompatibleModel):
     model_config = ConfigDict(extra="forbid")
 
     task_id: str
@@ -403,6 +423,7 @@ class TaskState(BaseModel):
     cost_usd: float = Field(default=0.0, ge=0)
     last_error: str | None = None
     sensor_results: list[SensorResult] = Field(default_factory=list)
+    improvement: ImprovementState | None = None
 
 
 class CommandResult(BaseModel):

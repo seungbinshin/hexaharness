@@ -18,6 +18,29 @@ ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = ROOT / "skills" / "hexaharness" / "scripts" / "hexa.py"
 
 
+def test_python_311_reports_requirement_before_parsing_new_syntax(tmp_path: Path) -> None:
+    python = shutil.which("python3.11")
+    if python is None:
+        pytest.skip("Python 3.11 is unavailable")
+    script = tmp_path / "한글 path" / "hexa.py"
+    script.parent.mkdir()
+    shutil.copyfile(LAUNCHER, script)
+    result = subprocess.run([python, "-I", str(script), "version"], capture_output=True, text=True)
+    assert result.returncode == 78
+    assert "Python 3.12+ is required" in result.stderr
+    assert "SyntaxError" not in result.stderr
+    assert not result.stdout
+
+
+def test_configured_runtime_rejects_unsupported_python() -> None:
+    python = shutil.which("python3.11")
+    if python is None:
+        pytest.skip("Python 3.11 is unavailable")
+    launcher = _load_launcher()
+    with pytest.raises(launcher.BootstrapError, match=r"Python 3\.12"):
+        launcher.resolve_runtime(ROOT, {"HEXAHARNESS_RUNTIME_PYTHON": python})
+
+
 def _load_launcher() -> ModuleType:
     spec = importlib.util.spec_from_file_location("hexaharness_bootstrap", LAUNCHER)
     assert spec is not None and spec.loader is not None

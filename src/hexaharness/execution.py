@@ -80,6 +80,9 @@ def execute_capture(
     stdout = ""
     stderr = ""
     try:
+        paths = HarnessPaths(project_root)
+        if paths.stop_file.exists() or paths.improvement_stop_file(task_id).exists():
+            raise InterruptedError("stop was signalled before command launch")
         creation_flags = (
             getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
         )
@@ -109,13 +112,18 @@ def execute_capture(
                 stdout, stderr = process.communicate(timeout=min(0.1, remaining))
                 break
             except subprocess.TimeoutExpired:
-                if HarnessPaths(project_root).stop_file.exists():
+                paths = HarnessPaths(project_root)
+                if paths.stop_file.exists() or paths.improvement_stop_file(task_id).exists():
                     stopped = True
                     _stop_process_group(process)
                     stdout, stderr = process.communicate()
                     stderr = f"{stderr or ''}\nemergency stop interrupted the command".strip()
                     break
         exit_code = process.returncode
+    except InterruptedError:
+        exit_code = None
+        stopped = True
+        stderr = "stop interrupted the command before launch"
     except FileNotFoundError as error:
         exit_code = 127
         stderr = f"command not found: {error.filename}"

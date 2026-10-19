@@ -24,6 +24,7 @@ from hexaharness.external_access import (
     load_access_grant,
     revoke_external_access,
 )
+from hexaharness.improvement_cli import improve
 from hexaharness.io import redact_argv, redact_text_using_argv
 from hexaharness.learning import record_learning
 from hexaharness.models import (
@@ -69,6 +70,7 @@ app = typer.Typer(
     no_args_is_help=True,
     pretty_exceptions_enable=False,
 )
+app.command()(improve)
 
 AccessOption = Annotated[
     str | None, typer.Option("--access-grant", help="Approved task-scoped external access ID.")

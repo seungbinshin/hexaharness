@@ -69,9 +69,11 @@ def cache_root(environment: Mapping[str, str] | None = None) -> Path:
         return Path(configured).expanduser().absolute()
     if configured := env.get("XDG_CACHE_HOME"):
         return (Path(configured).expanduser() / "hexaharness").absolute()
-    if sys.platform == "win32" and (configured := env.get("LOCALAPPDATA")):
+    # Keep all platform branches type-checked, including when mypy runs on macOS.
+    current_platform = sys.platform
+    if current_platform == "win32" and (configured := env.get("LOCALAPPDATA")):
         return (Path(configured).expanduser() / "HexaHarness" / "Cache").absolute()
-    if sys.platform == "darwin":
+    if current_platform == "darwin":
         return (Path.home() / "Library" / "Caches" / "hexaharness").absolute()
     return (Path.home() / ".cache" / "hexaharness").absolute()
 
@@ -179,7 +181,8 @@ def _runtime_ready(runtime_dir: Path, fingerprint: str) -> bool:
     }
 
 
-type FileIdentity = tuple[int, int, int, int, int]
+# Keep the launcher parseable on 3.11 so the version diagnostic can run.
+FileIdentity = tuple[int, int, int, int, int]
 
 
 def _file_identity(stat_result: os.stat_result) -> FileIdentity:
@@ -395,6 +398,25 @@ def resolve_runtime(
         python = Path(configured).expanduser().absolute()
         if not python.is_file():
             raise BootstrapError(f"configured runtime interpreter does not exist: {python}")
+        try:
+            probe = subprocess.run(
+                [
+                    str(python),
+                    "-I",
+                    "-c",
+                    "import sys; print('.'.join(map(str, sys.version_info[:2])))",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=True,
+                env=runtime_environment(env),
+            )
+            version = tuple(int(part) for part in probe.stdout.strip().split("."))
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            raise BootstrapError("configured runtime interpreter could not be validated") from error
+        if len(version) != 2 or version < MINIMUM_PYTHON:
+            raise BootstrapError("configured runtime interpreter requires Python 3.12+")
         return python, runtime_environment(env)
 
     fingerprint = dependency_fingerprint(root)

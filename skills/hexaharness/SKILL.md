@@ -49,6 +49,13 @@ material work. Pick the task kind internally: `change` for implementation/design
   do not duplicate the full suite immediately beforehand unless a release gate needs it. Use
   additional review only when deterministic checks cannot answer a material acceptance question.
 
+- For an explicit text improvement request, repeated failure, or unmet validation, consider the
+  [built-in improvement strategy](../../docs/improvement.md) when the project's existing
+  `harness.yaml` configures it. Use the same task and its remaining budget. Reserve before host
+  generation, never redispatch duplicate request keys, preserve baseline/evaluator identity,
+  report unknown usage as unknown, and let the runtime promotion gate decide adoption. Literal
+  checks are a narrow data evaluation; do not claim model-quality gains or code isolation.
+
 ## Authorization and completion
 
 Continue project-local reversible work already covered by the user's goal. Native host permissions
