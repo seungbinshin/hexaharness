@@ -20,6 +20,17 @@ flowchart TD
     R --> P
 ```
 
+## 1.0 support boundary
+
+The stable contract covers policy-gated local commands, finite execution, STOP/recovery, exact
+external-action approval, checkpoints and sensor evidence. Linux, macOS and Windows are tested
+in native CI. The runtime does not replace the host sandbox or guarantee model/provider behavior.
+
+Text improvement and host request/receipt handoff are **experimental and disabled by default**.
+They require explicit project configuration; there is no built-in provider dispatcher. Literal
+checks do not establish semantic quality gains. See [release acceptance](docs/release-readiness.md)
+and [provider readiness](docs/provider-readiness.md) for the separate validation boundaries.
+
 ## What the agent handles
 
 - discovers requirements and asks only about decisions that materially affect behavior,

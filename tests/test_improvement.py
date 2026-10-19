@@ -36,6 +36,16 @@ def setup_experiment(root: Path) -> str:
     return task_id
 
 
+def test_improvement_is_disabled_by_default_without_state_changes(harness_project: Path) -> None:
+    config = load_config(harness_project)
+    assert config.improvement is None
+    task_id = start_task(harness_project, "Ordinary stable workflow").task_id
+    before = load_task(harness_project, task_id).model_dump_json()
+    with pytest.raises(PolicyBlockedError, match="configure improvement"):
+        begin_improvement(harness_project, config, task_id)
+    assert load_task(harness_project, task_id).model_dump_json() == before
+
+
 def test_compare_promote_preserves_baseline_and_uses_parent_budget(harness_project: Path) -> None:
     root = harness_project
     task_id = setup_experiment(root)

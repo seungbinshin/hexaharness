@@ -13,6 +13,12 @@ Boolean capability flags distinguish runtime support from host responsibilities.
 `provider_dispatch: false` means the runtime does not call a model. `provider_evidence` remains
 `not-assessed`: discovery does not certify any provider or a project's test history.
 
+The additive `stability` and `defaults` objects distinguish stable core contracts from experimental
+text improvement/host handoff and state their disabled defaults. Capability presence is not project
+enablement. Stable CLI contracts use additive fields within schema 1; consumers must ignore unknown
+fields and reject unknown schema versions. Experimental contracts may change with a new explicit
+contract version and migration notes; they are not covered by the stable API promise.
+
 Existing JSON commands retain their envelopes. Command exit code must be a strict integer;
 consumers must not coerce booleans, strings or missing values to success. A subprocess exit of
 zero alone does not establish task completion: inspect `status: completed`, every required

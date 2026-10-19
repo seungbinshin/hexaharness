@@ -1,7 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.0.0 - 2026-10-19
 
+- Stabilized the existing execution, approval, checkpoint and evidence contracts; experimental
+  text improvement and host handoff remain disabled by default and make no quality guarantees.
+- Fixed descendant cleanup after parent exit, bounded post-stop output collection, and added a
+  Windows lifetime-job supervisor that establishes containment before launching commands.
 - Added an opt-in bounded text-improvement strategy using the existing task, budget, policy,
   sensor and evidence lifecycle. Frozen baseline/evaluator identities, fresh evaluation attempts,
   conservative usage reservations, cancellation, recovery and sensor-gated adoption are enforced.

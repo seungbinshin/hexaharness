@@ -36,6 +36,12 @@ def test_discovery_is_read_only_and_does_not_require_a_valid_project(
     assert payload["host_authority_required"] is True
     assert payload["supported_evaluators"] == ["literal-text-v1"]
     assert payload["provider_evidence"] == "not-assessed"
+    assert payload["stability"]["text_improvement"] == "experimental"
+    assert payload["stability"]["host_handoff"] == "experimental"
+    assert payload["defaults"] == {
+        "text_improvement_enabled": False,
+        "provider_dispatch_enabled": False,
+    }
     assert str(tmp_path) not in result.stdout
     after = {
         str(p.relative_to(tmp_path)): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()

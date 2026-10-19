@@ -1,55 +1,58 @@
 # 1.0 release acceptance
 
-This is an acceptance ledger, not a declaration that 1.0 has shipped. The current candidate
-retains version 0.4.0. Publish an exact commit and fresh platform results with any release.
+This ledger separates the stable product contract from opt-in experimental features. Version
+metadata alone is not publication: a release requires an exact commit, fresh native CI, verified
+artifacts and a verified GitHub tag/release. Do not report a queued run as a passing gate.
 
-## Product boundary
+## Stable product boundary
 
-HexaHarness remains one plugin, primary lifecycle skill, configuration and deterministic
-runtime. The host owns reasoning, model credentials and native isolation. The runtime owns
-policy decisions, bounded execution, checkpoints, usage reservations, evidence and adoption.
-Do not add a second model SDK, scheduler, approval store or product task ledger merely to
-relabel those existing responsibilities.
+One plugin, primary lifecycle skill, configuration and deterministic runtime remain. The host
+owns reasoning, model credentials and native isolation. The runtime owns policy, finite command
+execution, checkpoints and evidence. A provider SDK or research quality benchmark is not required
+for those existing responsibilities. Native permissions remain authoritative.
 
-The implemented improvement domain is bounded UTF-8 text data with `literal-text-v1` checks.
-That evaluator does not execute candidates. Code optimization, arbitrary external judges and
-semantic model-quality guarantees must stay unavailable until their own enforcement and
-evaluation evidence exists. Literal checks alone cannot establish those claims.
+| Required gate | Acceptance evidence |
+|---|---|
+| Execution and cancellation | Shell-free approved argv, finite timeout, STOP before/during execution, process-group/job descendant cleanup, bounded output drainage; native Linux/macOS/Windows tests |
+| Approval and reconciliation | Exact task/argv HMAC binding, no automatic mutation retry, fresh independent receipt, uncertain results stay unresolved |
+| Compatibility | Legacy absent-field wire/fingerprints, schema 1/2 reads, future schemas fail closed, strict integer exits, complete only with all required current sensors |
+| Task continuation | Explicit task-only limits, inherited usage, source hashes, absolute deadline, unchanged global defaults and native authority |
+| Evidence and recovery | Atomic checkpoints, current artifact/sensor digests, real STOP/recovery drill; no fabricated learning/outcome records |
+| Distribution | Synchronized 1.0.0 package/manifests, locked dependencies, cold/warm launcher, fresh installed wheel in space/Unicode paths on all supported OSes, verified artifact digests |
+| Consumer handoff | Versioned discovery, exact launcher, strict completion/sensor verification and pinned artifact; actual PsOs installation remains separately coordinated |
 
-## Required evidence
+Linux-only anchored external transactions remain explicitly scoped to their existing native
+metadata and reviewed-executor requirements. Windows support does not enable them or alter host
+logon rights. Process lifetime cleanup does not provide filesystem/network isolation or prevent
+hostile programs from using external services to escape a local process tree.
 
-| Boundary | Concrete acceptance condition | Current evidence / remaining work |
-|---|---|---|
-| Existing workflow | Original CLI/JSON/checkpoint contracts, exact approval binding and required sensors remain intact | Legacy golden tests and regression suite pass; final commit needs fresh matrix CI |
-| Task continuation | Explicit task-only limits, inherited usage, immutable source checkpoints, absolute deadline, no silent default change | Implemented and tested; default configuration remains unchanged |
-| Host model | Bound request and response identity, one dispatch owner, measured usage, known call/cost limits, cancellation and uncertain-result reconciliation | Structured host request/receipt integration is tested with fixtures; an actual supported provider probe remains required |
-| Candidate isolation | Text candidates remain data; executable targets and unsupported evaluators are rejected. Any future code domain needs native read/write/network boundary probes | Narrow data evaluator implemented. No general code sandbox or code-domain adoption claim |
-| Independent evaluation | Frozen baseline/evaluator, fresh attempt/output identity, no stale-success fallback, mandatory checks and current sensors; actual model-quality claims also need held-out repeated trials | Literal domain tested; held-out model-quality trials remain unverified |
-| Failure learning | Five distinct observed failure tasks with retained, digest-verified evidence; implemented regressions remain the primary protection | Five actual compatibility/bootstrap/platform/configuration failures recorded through `learn` |
-| STOP/recovery | A real harmless command is blocked during project STOP, and reviewed recovery preserves checkpoint bytes | Local drill passed; receipt retained outside version control |
-| Unattended use | Three real outcomes with fresh passing sensors and distinct artifact claims under current guidance | Must be reevaluated after the new failure-derived guidance; never substitute fabricated runs |
-| Distribution | Exact versions and locks, cold/warm bootstrap, fresh supported-platform installation, wheel/sdist and artifact digests | Previous three-platform CI passed; final candidate must be rerun and artifacts rehashed |
-| PsOs | Discovery without bootstrap, exact launcher callback, strict integer exits, all required sensor results, native-reported vs independently verified distinction | Contract supplied by the separate PsOs task; deployed-version integration remains separate |
+## Experimental features: opt-in and disabled by default
 
-## Actual host probe prerequisites
+`HarnessConfig.improvement` defaults to null. Without explicit project configuration, `begin`
+fails before creating experiment state; ordinary workflows never dispatch a model. Capability
+metadata labels text improvement and host handoff experimental and reports both defaults disabled.
 
-The Codex CLI exposes JSON usage after a turn, and official configuration documents an
-experimental rollout token tracking feature. Neither fact alone establishes an enforceable
-per-call monetary ceiling for a particular account. Authentication alone does not establish it.
-Until the adapter's actual call allowance and cost accounting are known, do not dispatch a
-live model probe or report synthetic receipts as provider measurements.
+The fixed `literal-text-v1` evaluator handles bounded UTF-8 data only. Its required deterministic
+gates remain baseline/evaluator identity, fresh attempt/output evidence, unknown-usage blocking,
+conservative reservations, duplicate suppression, local rollback and current sensors. These tests
+must pass even though the feature is experimental. Future code optimization, external semantic
+judges and native code sandboxes remain unavailable.
 
-References: [Codex non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode)
-and [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
-Runtime/host integration tests can still verify identity, duplicate suppression, unknown
-usage, cancellation and accounting with clearly labelled deterministic fixtures.
+A live supported provider must independently establish hard call/token/cost bounds, remote
+cancellation and uncertain-result reconciliation before using the experimental host handoff.
+The runtime's assertions are not independent provider certification. Fixture results stay labelled.
+Useful real-model improvement claims additionally need independent held-out repeated trials.
+Neither unverified provider support nor research performance is advertised as a 1.0 guarantee;
+therefore those optional claims are not an indefinite blocker on the stable runtime release.
+See [provider readiness](provider-readiness.md) for the actual connection findings.
 
-## Publication rules
+## Publication and verification
 
-The existing repository route is authorized. Fresh tests, artifact identity and acceptance
-conditions must precede a 1.0 tag/release. A passing matrix does not prove an unimplemented
-model adapter or OS sandbox. Keep unavailable capabilities explicit and do not advertise
-autonomous general self-improvement while those conditions are missing.
+The authorized publication route is the existing GitHub repository. Run the full matrix for the
+final source and inspect its installation evidence and artifact hashes before merge/tag/release.
+Do not lower coverage, omit Windows checks or substitute earlier-commit results. After publication,
+read back the exact tag commit, release assets/digests and version. Keep installed consumer copies
+unchanged until their own update is authorized and verified.
 
-Public release documents must omit machine-specific paths, personal account details and
-credentials. Operational logs and checkpoint keys remain outside release artifacts.
+Public documents omit machine-specific paths, account details, credentials and runtime keys.
+Historical verification notes identify the commits they cover and do not certify newer source.

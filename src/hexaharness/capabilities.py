@@ -33,6 +33,12 @@ def runtime_capabilities() -> dict[str, Any]:
         },
         "host_authority_required": True,
         "provider_evidence": "not-assessed",
+        "stability": {
+            "core": "stable",
+            "text_improvement": "experimental",
+            "host_handoff": "experimental",
+        },
+        "defaults": {"text_improvement_enabled": False, "provider_dispatch_enabled": False},
         "supported_evaluators": ["literal-text-v1"],
         "candidate_extensions": [".txt", ".md"],
         "candidate_max_bytes": 65536,

@@ -1,4 +1,7 @@
-# Host model request and receipt contract
+# Experimental host model request and receipt contract
+
+This protocol is experimental and requires opt-in improvement configuration. It is not a
+stable-release promise of provider dispatch, remote cancellation or quality gains.
 
 The built-in host adapter is a data protocol inside the existing improvement strategy. It
 does not embed a provider SDK, launch a second agent, or grant execution/network permissions.

@@ -1,6 +1,6 @@
-# Candidate verification checkpoint — 2026-10-19
+# Historical candidate verification — 2026-10-19
 
-This records the pre-publication checkpoint for the unreleased improvement work. The package and
+This records the fd193a7 pre-publication checkpoint for the unreleased improvement work. The package and
 plugin versions remain 0.4.0. It is not a 1.0 release announcement or a provider-quality claim.
 
 ## Verified locally
@@ -30,7 +30,7 @@ Metadata changes during hydration are a plausible cause; a before/after trace fo
 was not captured. After reads stabilized, all five original learning digests and their source
 events matched; no evidence was rewritten and no validation was relaxed.
 
-## Remaining release conditions
+## Conditions recorded at that checkpoint
 
 The earlier [three-platform CI](https://github.com/seungbinshin/hexaharness/actions/runs/39273874878)
 passed for commit `b7c1f464c33715070b75db0f1d7ca611ce6fed8c`. That result does not cover subsequent
@@ -49,3 +49,7 @@ remain unsupported, as reported by `hexa capabilities`. No release may imply tho
 Consumer installation and PsOs integration are separate operations after a reviewed, verified
 release. See [release acceptance](release-readiness.md), [host handoff](host-adapter.md),
 [API integration](api-contract.md) and [task budgets](task-budgets.md).
+
+The subsequent 1.0 review separates stable runtime gates from experimental provider/research
+claims; see [current release acceptance](release-readiness.md). This historical result does not
+cover the later process-lifetime repair or 1.0 version preparation.

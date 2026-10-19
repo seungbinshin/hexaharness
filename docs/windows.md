@@ -30,6 +30,23 @@ For a path containing spaces, invoke the full path with PowerShell's `&` and quo
 stdout/stderr redirection and process cancellation on Windows itself before release. macOS tests
 of Unicode/space paths or mocked Windows branches are not Windows execution evidence.
 
+## Command lifetime and cancellation
+
+On Windows, a private runtime supervisor joins a kill-on-close Job Object before launching the
+exact approved argv. Its handle is not inherited; normal exit or forced termination closes the
+job and stops ordinary descendants, including children that ignore console break. Failure to
+create or join the job exits 126 without executing the command. There is no uncontained fallback,
+breakaway permission or host-policy change. Native CI exercises parent-first exit, child signal
+resistance, timeout and STOP with actual processes. The supervisor preserves command output and
+exit status. This is process lifetime management, not filesystem/network isolation or containment
+of processes deliberately created through an external service.
+
+POSIX uses a new session and terminates the group even after its leader exits. Output drainage
+after a stop is bounded. Commands that deliberately detach into another session require the host
+sandbox; HexaHarness cannot claim to contain arbitrary hostile programs.
+
+See [Microsoft Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects).
+
 ## Scope: host failure, not a HexaHarness permission exception
 
 `CreateProcessWithLogonW failed:1385` / `ERROR_LOGON_TYPE_NOT_GRANTED` means Windows refused

@@ -1,4 +1,4 @@
-# Built-in improvement strategy (preview)
+# Built-in improvement strategy (experimental, off by default)
 
 This is part of the existing HexaHarness package, CLI, configuration and primary skill.
 The host can choose this strategy after repeated failure, unmet validation, or an explicit
@@ -87,7 +87,7 @@ tasks retain it; old terminal tasks may be pruned together with their checkpoint
 audit references, not the sole source of recovery truth. No daemon, second plugin, independent
 skill, approval store, work scheduler, or model retry loop is introduced.
 
-## Release evidence still needed
+## Evidence required before expanding experimental claims
 
 The local deterministic examples prove bounded control flow and evidence integrity. They do
 not establish useful real-model improvement. A general code-candidate version needs a measured
