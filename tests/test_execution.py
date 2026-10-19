@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import sys
 import threading
 import time
@@ -11,6 +12,46 @@ import pytest
 from hexaharness.execution import CapturedExecution, execute_capture
 from hexaharness.io import redact_argv
 from hexaharness.workflow import stop_task_or_harness
+
+
+@pytest.mark.parametrize("parent_exits", [False, True])
+def test_timeout_reaps_descendants_even_when_parent_exits(
+    harness_project: Path, parent_exits: bool
+) -> None:
+    # The child deliberately survives graceful cancellation and retains the output pipe.
+    # A sentinel makes this a process-lifetime assertion, not just an exit-code check.
+    child = harness_project / "child.py"
+    child.write_text(
+        "import signal, time\nfrom pathlib import Path\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        "if hasattr(signal, 'SIGBREAK'): signal.signal(signal.SIGBREAK, signal.SIG_IGN)\n"
+        "Path('child-ready').write_text('ready')\n"
+        "for i in range(300):\n"
+        " Path('child-heartbeat').write_text(str(i)); time.sleep(0.02)\n"
+        "Path('child-survived').write_text('alive')\n",
+        encoding="utf-8",
+    )
+    parent = (
+        "import subprocess, sys, time; from pathlib import Path; "
+        "subprocess.Popen([sys.executable, 'child.py']); "
+        "\nwhile not Path('child-ready').exists(): time.sleep(0.01)\n"
+        + ("sys.exit(0)\n" if parent_exits else "time.sleep(15)\n")
+    )
+    captured = execute_capture(
+        harness_project,
+        task_id="tree-timeout",
+        label="descendant-timeout",
+        argv=[sys.executable, "-c", parent],
+        timeout_seconds=1,
+    )
+    assert captured.duration_seconds < 5, captured
+    assert not (harness_project / "child-survived").exists()
+    heartbeat = harness_project / "child-heartbeat"
+    before = heartbeat.read_bytes() if heartbeat.exists() else b""
+    time.sleep(0.3)
+    assert (heartbeat.read_bytes() if heartbeat.exists() else b"") == before
+    if not parent_exits or os.name != "nt":
+        assert captured.timed_out
 
 
 def test_emergency_stop_interrupts_an_in_flight_command(harness_project: Path) -> None:

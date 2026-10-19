@@ -56,7 +56,13 @@ def binding_key(project_root: Path) -> bytes:
             return key
         key = secrets.token_bytes(32)
         descriptor = os.open(
-            key_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0), 0o600
+            key_path,
+            os.O_CREAT
+            | os.O_EXCL
+            | os.O_WRONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_BINARY", 0),
+            0o600,
         )
         try:
             os.write(descriptor, key)

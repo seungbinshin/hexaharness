@@ -285,6 +285,7 @@ def _merge_existing_config(existing: HarnessConfig, updated: HarnessConfig) -> H
     updated.trip_wires = existing.trip_wires
     updated.retention = existing.retention
     updated.emergency_stop_file = existing.emergency_stop_file
+    updated.improvement = existing.improvement
     baseline = (
         legacy_v1_policy(existing.project)
         if existing.schema_version < CURRENT_SCHEMA_VERSION

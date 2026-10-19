@@ -8,7 +8,8 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
+from typing import TextIO
 
 import pytest
 
@@ -16,6 +17,29 @@ from hexaharness import __version__
 
 ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = ROOT / "skills" / "hexaharness" / "scripts" / "hexa.py"
+
+
+def test_python_311_reports_requirement_before_parsing_new_syntax(tmp_path: Path) -> None:
+    python = shutil.which("python3.11")
+    if python is None:
+        pytest.skip("Python 3.11 is unavailable")
+    script = tmp_path / "한글 path" / "hexa.py"
+    script.parent.mkdir()
+    shutil.copyfile(LAUNCHER, script)
+    result = subprocess.run([python, "-I", str(script), "version"], capture_output=True, text=True)
+    assert result.returncode == 78
+    assert "Python 3.12+ is required" in result.stderr
+    assert "SyntaxError" not in result.stderr
+    assert not result.stdout
+
+
+def test_configured_runtime_rejects_unsupported_python() -> None:
+    python = shutil.which("python3.11")
+    if python is None:
+        pytest.skip("Python 3.11 is unavailable")
+    launcher = _load_launcher()
+    with pytest.raises(launcher.BootstrapError, match=r"Python 3\.12"):
+        launcher.resolve_runtime(ROOT, {"HEXAHARNESS_RUNTIME_PYTHON": python})
 
 
 def _load_launcher() -> ModuleType:
@@ -145,6 +169,29 @@ def test_install_lock_removes_the_owned_lock(tmp_path: Path) -> None:
     assert not lock_path.exists()
 
 
+def test_install_lock_closes_creation_handle_before_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    launcher = _load_launcher()
+    lock_path = tmp_path / "runtime.lock"
+    opened: list[int] = []
+    original_open = os.open
+
+    def track_open(path: Path, flags: int, mode: int) -> int:
+        descriptor = original_open(path, flags, mode)
+        opened.append(descriptor)
+        return descriptor
+
+    monkeypatch.setattr(launcher.os, "open", track_open)
+    with launcher._install_lock(lock_path):
+        assert lock_path.is_file()
+        assert len(opened) == 1
+        # Windows cannot unlink a file held open without delete sharing.
+        with pytest.raises(OSError):
+            os.fstat(opened[0])
+    assert not lock_path.exists()
+
+
 def test_install_lock_does_not_remove_a_replacement_lock(tmp_path: Path) -> None:
     launcher = _load_launcher()
     lock_path = tmp_path / "runtime.lock"
@@ -175,8 +222,22 @@ def test_dead_stale_lock_is_recovered(tmp_path: Path, monkeypatch: pytest.Monkey
     monkeypatch.setattr(launcher, "STALE_LOCK_SECONDS", -1.0)
     monkeypatch.setattr(launcher, "_process_is_alive", lambda pid: False)
 
-    assert launcher._recover_stale_lock(lock_path)
+    path_identity = launcher._file_identity(lock_path.stat())
+    with lock_path.open("rb") as stream:
+        descriptor_identity = launcher._file_identity(os.fstat(stream.fileno()))
+    assert launcher._recover_stale_lock(lock_path), (path_identity, descriptor_identity)
     assert not lock_path.exists()
+
+
+def test_windows_lock_identity_uses_consistent_birth_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    launcher = _load_launcher()
+    monkeypatch.setattr(launcher.sys, "platform", "win32")
+    common = {"st_dev": 1, "st_ino": 2, "st_birthtime_ns": 3, "st_mtime_ns": 4, "st_size": 5}
+    by_path = SimpleNamespace(**common, st_ctime_ns=3)
+    by_descriptor = SimpleNamespace(**common, st_ctime_ns=99)
+    assert launcher._file_identity(by_path) == launcher._file_identity(by_descriptor)
+    replacement = SimpleNamespace(**{**common, "st_birthtime_ns": 6}, st_ctime_ns=3)
+    assert launcher._file_identity(by_path) != launcher._file_identity(replacement)
 
 
 def test_stale_recovery_does_not_remove_replacement_lock(
@@ -248,6 +309,60 @@ def test_configured_runtime_must_exist(tmp_path: Path) -> None:
         launcher.resolve_runtime(
             ROOT, {"HEXAHARNESS_RUNTIME_PYTHON": str(tmp_path / "missing-python")}
         )
+
+
+def test_first_use_installer_does_not_pollute_cli_stdout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    launcher = _load_launcher()
+    monkeypatch.setattr(
+        launcher.venv, "EnvBuilder", lambda **kwargs: SimpleNamespace(create=lambda path: None)
+    )
+
+    def install(
+        argv: list[str],
+        *,
+        check: bool,
+        cwd: Path,
+        env: dict[str, str],
+        stdout: TextIO | None = None,
+    ) -> None:
+        print("installer diagnostics", file=stdout)
+
+    monkeypatch.setattr(launcher.subprocess, "run", install)
+    launcher._create_runtime(ROOT, tmp_path / "runtime-test")
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "installer diagnostics\n"
+
+
+def test_windows_launcher_preserves_argv_and_child_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = _load_launcher()
+    environment = {"PYTHONNOUSERSITE": "1"}
+    monkeypatch.setattr(launcher.sys, "platform", "win32")
+    monkeypatch.setattr(
+        launcher, "resolve_runtime", lambda root: (Path(sys.executable), environment)
+    )
+
+    def child(
+        argv: list[str], *, env: dict[str, str], check: bool
+    ) -> subprocess.CompletedProcess[str]:
+        assert argv[1:4] == ["-I", "-c", launcher.MODULE_LOADER]
+        assert argv[-1] == "argument with spaces and 한글"
+        assert env == environment
+        assert check is False
+        return subprocess.CompletedProcess(argv, 17)
+
+    def reject_exec(*args: object) -> None:
+        pytest.fail("Windows must wait and preserve argv through subprocess")
+
+    monkeypatch.setattr(launcher.subprocess, "run", child)
+    monkeypatch.setattr(launcher.os, "execve", reject_exec)
+    with pytest.raises(SystemExit) as result:
+        launcher.run(["argument with spaces and 한글"])
+    assert result.value.code == 17
 
 
 def test_launcher_executes_bundled_source_with_configured_runtime() -> None:

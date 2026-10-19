@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from hexaharness.events import iter_events, record_event
-from hexaharness.models import HarnessConfig, TaskState
+from hexaharness.models import HarnessConfig, TaskState, task_budget_limits, utc_now
 from hexaharness.state import task_elapsed_seconds
 
 
@@ -29,21 +29,36 @@ def active_trip_wires(
 ) -> list[str]:
     active: dict[str, str] = {}
     elapsed = task_elapsed_seconds(state)
-    if state.tool_calls >= config.budgets.max_tool_calls:
+    limits = task_budget_limits(config, state)
+    if state.tool_calls >= limits.max_tool_calls:
         active["tool-budget"] = "stop-and-preserve-state"
     cost_limit_reached = (
-        state.cost_usd > 0
-        if config.budgets.max_cost_usd == 0
-        else state.cost_usd >= config.budgets.max_cost_usd
+        state.cost_usd > 0 if limits.max_cost_usd == 0 else state.cost_usd >= limits.max_cost_usd
     )
     if cost_limit_reached:
         active["cost-budget"] = "pause-and-inspect"
-    if state.tokens_used >= config.budgets.max_tokens:
+    if state.tokens_used >= limits.max_tokens:
         active["token-budget"] = "stop-and-preserve-state"
-    if elapsed >= config.budgets.max_wall_time_seconds:
+    if elapsed >= limits.max_wall_time_seconds:
         active["wall-time-budget"] = "stop-and-preserve-state"
+    if state.task_budget is not None and utc_now() >= state.task_budget.deadline_at:
+        active["absolute-deadline"] = "stop-and-preserve-state"
 
     for specification in config.trip_wires:
+        # A generated duplicate of a default budget follows the explicitly approved
+        # task limit. Independent/custom tripwires remain effective and can be stricter.
+        duplicate_defaults = {
+            ("tool-budget", "tool_calls"): config.budgets.max_tool_calls,
+            ("cost-budget", "cost_usd"): config.budgets.max_cost_usd,
+            ("token-budget", "tokens_used"): config.budgets.max_tokens,
+            ("wall-time-budget", "wall_time_seconds"): config.budgets.max_wall_time_seconds,
+        }
+        if (
+            state.task_budget is not None
+            and duplicate_defaults.get((specification.name, specification.metric))
+            == specification.threshold
+        ):
+            continue
         observed: float | None = None
         if specification.metric == "tool_calls":
             observed = float(state.tool_calls)

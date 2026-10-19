@@ -12,6 +12,7 @@ from hexaharness.cli import app
 from hexaharness.config import load_config
 from hexaharness.errors import PolicyBlockedError
 from hexaharness.external_access import (
+    binding_key,
     grant_external_access,
     load_access_grant,
     revoke_external_access,
@@ -29,6 +30,15 @@ from hexaharness.state import (
     start_task,
 )
 from hexaharness.workflow import resume_task
+
+
+def test_binding_key_round_trips_binary_newlines(
+    harness_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    expected = b"\n\r\x1a\x00" * 8
+    monkeypatch.setattr("hexaharness.external_access.secrets.token_bytes", lambda count: expected)
+    assert binding_key(harness_project) == expected
+    assert binding_key(harness_project) == expected
 
 
 @pytest.fixture

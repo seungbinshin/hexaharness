@@ -41,6 +41,11 @@ material work. Pick the task kind internally: `change` for implementation/design
   relevant check. Ordinary failures keep the task active. Stop and preserve evidence when a real
   budget, timeout, repeated-failure trip wire, or emergency stop blocks progress. Retries repeat
   identical argv and are only for plausible transient failures.
+- If the user subsequently authorizes more bounded work, use the
+  [task continuation contract](../../docs/task-budgets.md). Distinguish configurable task defaults
+  from native limits. Preserve consumed usage and source checkpoints, require an absolute deadline,
+  and apply the authorization only to that task; do not silently change global defaults or reset
+  counters. A continuation does not bypass STOP, unresolved external actions, or host permissions.
 - If the host reports Windows `CreateProcessWithLogonW failed:1385` or
   `ERROR_LOGON_TYPE_NOT_GRANTED`, follow [Windows host failures](../../docs/windows.md).
   Stop unchanged retries; do not treat this as a project-code failure or bypass the host sandbox.
@@ -48,6 +53,17 @@ material work. Pick the task kind internally: `change` for implementation/design
 - Checkpoint meaningful milestones or pauses, not every edit. `complete` runs required sensors;
   do not duplicate the full suite immediately beforehand unless a release gate needs it. Use
   additional review only when deterministic checks cannot answer a material acceptance question.
+
+- For an explicit text improvement request, repeated failure, or unmet validation, consider the
+  [built-in improvement strategy](../../docs/improvement.md) when the project's existing
+  `harness.yaml` configures it. Use the same task and its remaining budget. Reserve before host
+  generation, never redispatch duplicate request keys, preserve baseline/evaluator identity,
+  report unknown usage as unknown, and let the runtime promotion gate decide adoption. Literal
+  checks are a narrow data evaluation; do not claim model-quality gains or code isolation.
+  Use the [host request/receipt adapter](../../docs/host-adapter.md) when a verified provider
+  connection can enforce the request's call, token, cost and cancellation contract. Never mark
+  unknown host capabilities as supported, redispatch a duplicate, or label fixtures as provider
+  results. If those limits cannot be confirmed, continue independent work and retain that blocker.
 
 ## Authorization and completion
 

@@ -5,6 +5,7 @@ import os
 import shlex
 import signal
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -34,27 +35,40 @@ class CapturedExecution:
 
 def _stop_process_group(process: subprocess.Popen[str]) -> None:
     """Terminate the isolated command group, then force it down after a short grace period."""
-    if process.poll() is not None:
+    posix_group = sys.platform != "win32" and os.name == "posix"
+    if process.poll() is not None and not posix_group:
         return
     try:
-        if os.name == "posix":
+        if sys.platform != "win32" and os.name == "posix":
             os.killpg(process.pid, signal.SIGTERM)
         elif os.name == "nt":  # pragma: no cover - exercised on Windows
             process.send_signal(getattr(signal, "CTRL_BREAK_EVENT", signal.SIGTERM))
         else:  # pragma: no cover - platform-specific fallback
             process.terminate()
         process.wait(timeout=2)
-        return
+        if not posix_group:
+            return
     except (OSError, ProcessLookupError, subprocess.TimeoutExpired):
         pass
 
     try:
-        if os.name == "posix":
+        if sys.platform != "win32" and os.name == "posix":
+            # The group can outlive its leader, including after a successful wait().
             os.killpg(process.pid, signal.SIGKILL)
         else:  # pragma: no cover - exercised on non-POSIX platforms
             process.kill()
     except (OSError, ProcessLookupError):
         return
+
+
+def _drain_stopped(process: subprocess.Popen[str]) -> tuple[str, str]:
+    try:
+        stdout, stderr = process.communicate(timeout=2)
+        return stdout or "", stderr or ""
+    except subprocess.TimeoutExpired:
+        # An intentionally detached process is outside group cancellation. Never let
+        # its inherited pipes turn a finite timeout into an unbounded host wait.
+        return "", "output pipes remained open after process-group termination"
 
 
 def execute_capture(
@@ -80,11 +94,20 @@ def execute_capture(
     stdout = ""
     stderr = ""
     try:
+        paths = HarnessPaths(project_root)
+        if paths.stop_file.exists() or paths.improvement_stop_file(task_id).exists():
+            raise InterruptedError("stop was signalled before command launch")
         creation_flags = (
             getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
         )
+        launch_argv = argv
+        if os.name == "nt":
+            # The supervisor joins its job before starting user code, removing the
+            # spawn/assign race. Its non-inherited handle kills descendants on exit.
+            supervisor = Path(__file__).with_name("_windows_process.py")
+            launch_argv = [sys.executable, "-I", str(supervisor), *argv]
         process = subprocess.Popen(
-            argv,
+            launch_argv,
             cwd=project_root,
             stdout=subprocess.DEVNULL if suppress_output else subprocess.PIPE,
             stderr=subprocess.DEVNULL if suppress_output else subprocess.PIPE,
@@ -100,22 +123,28 @@ def execute_capture(
             if remaining <= 0:
                 timed_out = True
                 _stop_process_group(process)
-                stdout, stderr = process.communicate()
+                stdout, stderr = _drain_stopped(process)
                 stderr = (
                     f"{stderr or ''}\ncommand timed out after {timeout_seconds:g} seconds".strip()
                 )
                 break
             try:
                 stdout, stderr = process.communicate(timeout=min(0.1, remaining))
+                _stop_process_group(process)
                 break
             except subprocess.TimeoutExpired:
-                if HarnessPaths(project_root).stop_file.exists():
+                paths = HarnessPaths(project_root)
+                if paths.stop_file.exists() or paths.improvement_stop_file(task_id).exists():
                     stopped = True
                     _stop_process_group(process)
-                    stdout, stderr = process.communicate()
+                    stdout, stderr = _drain_stopped(process)
                     stderr = f"{stderr or ''}\nemergency stop interrupted the command".strip()
                     break
         exit_code = process.returncode
+    except InterruptedError:
+        exit_code = None
+        stopped = True
+        stderr = "stop interrupted the command before launch"
     except FileNotFoundError as error:
         exit_code = 127
         stderr = f"command not found: {error.filename}"

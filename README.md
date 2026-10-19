@@ -20,6 +20,17 @@ flowchart TD
     R --> P
 ```
 
+## 1.0 support boundary
+
+The stable contract covers policy-gated local commands, finite execution, STOP/recovery, exact
+external-action approval, checkpoints and sensor evidence. Linux, macOS and Windows are tested
+in native CI. The runtime does not replace the host sandbox or guarantee model/provider behavior.
+
+Text improvement and host request/receipt handoff are **experimental and disabled by default**.
+They require explicit project configuration; there is no built-in provider dispatcher. Literal
+checks do not establish semantic quality gains. See [release acceptance](docs/release-readiness.md)
+and [provider readiness](docs/provider-readiness.md) for the separate validation boundaries.
+
 ## What the agent handles
 
 - discovers requirements and asks only about decisions that materially affect behavior,
@@ -198,6 +209,9 @@ task-scoped content or existence change instead of trusting timestamps.
 | `hexa run` | Execute one policy-gated argument array without a shell; distinguish agent review from human approval |
 | `hexa verify` | Run computational sensors and retain evidence |
 | `hexa complete` | Require sensors before advancing to completed |
+| `hexa capabilities` | Read supported contracts and limitations without a project |
+| `hexa continue` | Authorize task-only limits while retaining prior consumption |
+| `hexa improve` | Compare bounded text candidates through the existing task ledger |
 | `hexa resume` | Recover or explicitly reactivate a checkpoint |
 | `hexa learn` | Convert an observed failure into a traceable correction |
 | `hexa audit` | Evaluate the twelve-item production-readiness checklist |
@@ -230,14 +244,40 @@ and distinguish a host repair from a project fix. It does not modify global Code
 
 ## Development
 
+The [built-in improvement preview](docs/improvement.md) uses the existing task, configuration,
+CLI and primary skill. It currently supports bounded text-artifact comparisons against a fixed
+literal rubric, with usage reservations, retained baseline, cancellation/recovery and a sensor
+promotion gate. The [host handoff protocol](docs/host-adapter.md) binds requests and measured
+receipts; the host owns actual model execution. Executable-code optimization and provider dispatch
+are unavailable. See the [integration contract](docs/api-contract.md),
+[task-scoped budgets](docs/task-budgets.md), and [release acceptance ledger](docs/release-readiness.md).
+
 ```bash
-uv sync --locked
+uv sync --locked --python 3.12
 uv run ruff format --check .
 uv run ruff check .
 uv run mypy src skills/hexaharness/scripts/hexa.py
 uv run pytest --cov
 uv build
 ```
+
+Windows PowerShell: select the interpreter explicitly; activation is unnecessary.
+If `.venv` already uses 3.11, preserve it and use a new directory such as `.venv312`
+in every command below instead.
+
+```powershell
+py -3.12 -m venv .venv
+& .\.venv\Scripts\python.exe -m pip install --require-hashes -r requirements-dev.lock
+& .\.venv\Scripts\python.exe -m pip install --no-deps --no-build-isolation -e .
+& .\.venv\Scripts\python.exe -m ruff check .
+& .\.venv\Scripts\python.exe -m pytest
+```
+
+See [Windows setup and host failures](docs/windows.md). `requirements-dev.lock` is generated
+from `uv.lock` with `uv export --locked --all-groups --no-emit-project --output-file requirements-dev.lock`;
+do not hand-edit it. Ruff's `required-version` matches the locked release. The runtime-only
+requirements remain separate from development dependencies. Tests load `src` explicitly;
+validate a built wheel in a fresh environment before release.
 
 Skill changes also require the skill validator; plugin changes require both ecosystem manifests to
 remain synchronized. Licensed under the MIT License.

@@ -5,6 +5,7 @@ import json
 import os
 import re
 import secrets
+import sys
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -104,7 +105,7 @@ def _thread_held_locks() -> set[str]:
 
 
 def _acquire_file_lock(descriptor: int) -> None:
-    if os.name == "nt":  # pragma: no cover - exercised on Windows
+    if sys.platform == "win32":  # pragma: no cover - exercised on Windows
         msvcrt = cast(Any, import_module("msvcrt"))
 
         if os.fstat(descriptor).st_size == 0:
@@ -112,24 +113,22 @@ def _acquire_file_lock(descriptor: int) -> None:
             os.fsync(descriptor)
         os.lseek(descriptor, 0, os.SEEK_SET)
         msvcrt.locking(descriptor, msvcrt.LK_LOCK, 1)
-        return
+    else:
+        import fcntl
 
-    import fcntl
-
-    fcntl.flock(descriptor, fcntl.LOCK_EX)
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
 
 
 def _release_file_lock(descriptor: int) -> None:
-    if os.name == "nt":  # pragma: no cover - exercised on Windows
+    if sys.platform == "win32":  # pragma: no cover - exercised on Windows
         msvcrt = cast(Any, import_module("msvcrt"))
 
         os.lseek(descriptor, 0, os.SEEK_SET)
         msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
-        return
+    else:
+        import fcntl
 
-    import fcntl
-
-    fcntl.flock(descriptor, fcntl.LOCK_UN)
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
 
 
 @contextmanager
@@ -695,6 +694,8 @@ def save_task(project_root: Path, state: TaskState) -> None:
                 )
             if current.external_access != state.external_access:
                 raise PolicyBlockedError("external grants must use the approval lifecycle")
+            if current.task_budget != state.task_budget:
+                raise PolicyBlockedError("task continuation budget is immutable")
             if (
                 current.kind != state.kind
                 or current.approval_wait_seconds != state.approval_wait_seconds

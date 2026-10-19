@@ -1,4 +1,51 @@
-# Windows host sandbox failures
+# Windows setup and host sandbox failures
+
+## Python and development dependencies
+
+The bundled launcher requires Python 3.12+. Its initial source is parseable by Python 3.11 so an
+older interpreter exits with code 78 and a version diagnostic, before creating a runtime.
+`HEXAHARNESS_RUNTIME_PYTHON` is also version-checked. Selecting a new interpreter does not upgrade
+an existing venv: inspect its version and preserve a 3.11 venv under its existing name.
+
+```powershell
+py -0p
+py -3.12 -m venv .venv312
+& .\.venv312\Scripts\python.exe --version
+& .\.venv312\Scripts\python.exe -m pip install --require-hashes -r requirements-dev.lock
+& .\.venv312\Scripts\python.exe -m pip install --no-deps --no-build-isolation -e .
+& .\.venv312\Scripts\python.exe -m ruff check .
+& .\.venv312\Scripts\python.exe -m mypy src skills/hexaharness/scripts/hexa.py
+& .\.venv312\Scripts\python.exe -m pytest
+```
+
+If `py -3.12` is unavailable, install an authorized Python 3.12+ distribution first. No activation,
+execution-policy change, account-right change or global Python replacement is required.
+Ruff is a development dependency, not a runtime dependency. `requirements-dev.lock` is generated
+from `uv.lock`, includes transitive development dependencies and hashes, and ships in the sdist.
+`pyproject.toml` explicitly sets `target-version = "py312"` and pins Ruff's required tool version;
+normal lint runs from the project root without `--config`. Do not infer a Ruff configuration bug
+from a missing executable. The code uses UTC and currently has no ZoneInfo/tzdata requirement.
+
+For a path containing spaces, invoke the full path with PowerShell's `&` and quotes. Verify
+stdout/stderr redirection and process cancellation on Windows itself before release. macOS tests
+of Unicode/space paths or mocked Windows branches are not Windows execution evidence.
+
+## Command lifetime and cancellation
+
+On Windows, a private runtime supervisor joins a kill-on-close Job Object before launching the
+exact approved argv. Its handle is not inherited; normal exit or forced termination closes the
+job and stops ordinary descendants, including children that ignore console break. Failure to
+create or join the job exits 126 without executing the command. There is no uncontained fallback,
+breakaway permission or host-policy change. Native CI exercises parent-first exit, child signal
+resistance, timeout and STOP with actual processes. The supervisor preserves command output and
+exit status. This is process lifetime management, not filesystem/network isolation or containment
+of processes deliberately created through an external service.
+
+POSIX uses a new session and terminates the group even after its leader exits. Output drainage
+after a stop is bounded. Commands that deliberately detach into another session require the host
+sandbox; HexaHarness cannot claim to contain arbitrary hostile programs.
+
+See [Microsoft Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects).
 
 ## Scope: host failure, not a HexaHarness permission exception
 

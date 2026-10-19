@@ -4,11 +4,31 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+)
+
+from hexaharness.improvement_models import ImprovementConfig, ImprovementState
 
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+class _ImprovementCompatibleModel(BaseModel):
+    @model_serializer(mode="wrap")
+    def _serialize_legacy_shape(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data: dict[str, Any] = handler(self)
+        # Preserve 0.4 wire contracts and configuration digests when the extension is unused.
+        for optional in ("improvement", "task_budget"):
+            if data.get(optional) is None:
+                data.pop(optional, None)
+        return data
 
 
 class PolicyDecision(StrEnum):
@@ -213,7 +233,36 @@ class BudgetConfig(BaseModel):
     max_wall_time_seconds: int = Field(default=1800, ge=1, le=604_800)
     max_tool_calls: int = Field(default=50, ge=1, le=10_000)
     max_tokens: int = Field(default=100_000, ge=1)
-    max_cost_usd: float = Field(default=5.0, ge=0)
+    max_cost_usd: float = Field(default=5.0, ge=0, allow_inf_nan=False)
+
+
+class TaskBudget(BaseModel):
+    """An explicitly authorized continuation, never a project-wide default change."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal[1] = 1
+    limits: BudgetConfig
+    deadline_at: datetime
+    reason: str = Field(min_length=1, max_length=2000)
+    source_task_ids: list[str] = Field(min_length=1)
+    lineage_task_ids: list[str] = Field(min_length=1)
+    source_sha256: dict[str, str]
+    authorized_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("deadline_at")
+    @classmethod
+    def aware_deadline(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("deadline requires an explicit timezone")
+        return value.astimezone(UTC)
+
+    @field_validator("reason")
+    @classmethod
+    def nonblank_reason(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("authorization reason must not be blank")
+        return value.strip()
 
 
 class PolicyConfig(BaseModel):
@@ -309,7 +358,7 @@ class RetentionConfig(BaseModel):
     keep_latest_completed_tasks: int = Field(default=50, ge=1)
 
 
-class HarnessConfig(BaseModel):
+class HarnessConfig(_ImprovementCompatibleModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: int = Field(default=2, ge=1)
@@ -321,6 +370,7 @@ class HarnessConfig(BaseModel):
     trip_wires: list[TripWireSpec]
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
     emergency_stop_file: str = ".hexaharness/STOP"
+    improvement: ImprovementConfig | None = None
 
     @field_validator("sensors")
     @classmethod
@@ -376,7 +426,7 @@ class WriteObservation(BaseModel):
     recorded_at: datetime = Field(default_factory=utc_now)
 
 
-class TaskState(BaseModel):
+class TaskState(_ImprovementCompatibleModel):
     model_config = ConfigDict(extra="forbid")
 
     task_id: str
@@ -403,6 +453,12 @@ class TaskState(BaseModel):
     cost_usd: float = Field(default=0.0, ge=0)
     last_error: str | None = None
     sensor_results: list[SensorResult] = Field(default_factory=list)
+    improvement: ImprovementState | None = None
+    task_budget: TaskBudget | None = None
+
+
+def task_budget_limits(config: HarnessConfig, state: TaskState) -> BudgetConfig:
+    return state.task_budget.limits if state.task_budget is not None else config.budgets
 
 
 class CommandResult(BaseModel):

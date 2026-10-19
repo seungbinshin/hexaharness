@@ -7,6 +7,8 @@ import tarfile
 import tomllib
 from pathlib import Path
 
+import pytest
+
 from hexaharness import __version__
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,17 +57,23 @@ def test_only_primary_skill_is_discoverable_across_hosts() -> None:
     assert (ROOT / "skills/hexaharness/references/operating-loop.md").is_file()
 
 
-def test_runtime_requirements_match_uv_lock(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "filename,groups",
+    [("runtime-requirements.txt", "--no-dev"), ("requirements-dev.lock", "--all-groups")],
+)
+def test_requirements_match_uv_lock(tmp_path: Path, filename: str, groups: str) -> None:
     uv = shutil.which("uv")
     if uv is None:
         return
-    generated = tmp_path / "runtime-requirements.txt"
+    generated = tmp_path / filename
     subprocess.run(
         [
             uv,
             "export",
             "--locked",
-            "--no-dev",
+            groups,
+            "--format",
+            "requirements-txt",
             "--no-emit-project",
             "--output-file",
             str(generated),
@@ -81,7 +89,7 @@ def test_runtime_requirements_match_uv_lock(tmp_path: Path) -> None:
             line for line in value.splitlines() if not line.startswith(("# This file", "#    uv"))
         ]
 
-    committed = (ROOT / "runtime-requirements.txt").read_text(encoding="utf-8")
+    committed = (ROOT / filename).read_text(encoding="utf-8")
     assert without_command_header(generated.read_text(encoding="utf-8")) == without_command_header(
         committed
     )
@@ -133,6 +141,9 @@ def test_sdist_contains_only_the_intended_release_surface(tmp_path: Path) -> Non
         "docs/operations.md",
         "pyproject.toml",
         "runtime-requirements.txt",
+        "requirements-dev.lock",
+        "src/hexaharness/improvement.py",
+        "docs/improvement.md",
         "skills/hexaharness/SKILL.md",
         "skills/hexaharness/agents/openai.yaml",
         "skills/hexaharness/scripts/hexa.py",

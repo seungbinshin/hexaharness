@@ -69,9 +69,11 @@ def cache_root(environment: Mapping[str, str] | None = None) -> Path:
         return Path(configured).expanduser().absolute()
     if configured := env.get("XDG_CACHE_HOME"):
         return (Path(configured).expanduser() / "hexaharness").absolute()
-    if sys.platform == "win32" and (configured := env.get("LOCALAPPDATA")):
+    # Keep all platform branches type-checked, including when mypy runs on macOS.
+    current_platform = sys.platform
+    if current_platform == "win32" and (configured := env.get("LOCALAPPDATA")):
         return (Path(configured).expanduser() / "HexaHarness" / "Cache").absolute()
-    if sys.platform == "darwin":
+    if current_platform == "darwin":
         return (Path.home() / "Library" / "Caches" / "hexaharness").absolute()
     return (Path.home() / ".cache" / "hexaharness").absolute()
 
@@ -147,7 +149,8 @@ def environment_python(runtime_dir: Path) -> Path:
     """Return the platform-specific interpreter inside a virtual environment."""
     if sys.platform == "win32":
         return runtime_dir / "Scripts" / "python.exe"
-    return runtime_dir / "bin" / "python"
+    else:
+        return runtime_dir / "bin" / "python"
 
 
 def runtime_environment(environment: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -179,15 +182,22 @@ def _runtime_ready(runtime_dir: Path, fingerprint: str) -> bool:
     }
 
 
-type FileIdentity = tuple[int, int, int, int, int]
+# Keep the launcher parseable on 3.11 so the version diagnostic can run.
+FileIdentity = tuple[int, int, int, int, int]
 
 
 def _file_identity(stat_result: os.stat_result) -> FileIdentity:
     """Return the stable filesystem identity used to recognize an owned lock."""
+    # Windows stat/fstat disagree about deprecated ctime semantics (CPython #157671).
+    # Python 3.12+ exposes the same creation timestamp through birthtime on both.
+    if sys.platform == "win32":
+        timestamp = stat_result.st_birthtime_ns
+    else:
+        timestamp = stat_result.st_ctime_ns
     return (
         stat_result.st_dev,
         stat_result.st_ino,
-        stat_result.st_ctime_ns,
+        timestamp,
         stat_result.st_mtime_ns,
         stat_result.st_size,
     )
@@ -294,9 +304,8 @@ def _recover_stale_lock(lock_path: Path) -> bool:
 def _install_lock(lock_path: Path) -> Iterator[None]:
     """Serialize first-use installation with stale-lock recovery."""
     deadline = time.monotonic() + LOCK_TIMEOUT_SECONDS
-    descriptor: int | None = None
     identity: FileIdentity | None = None
-    while descriptor is None:
+    while identity is None:
         try:
             candidate = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
             candidate_identity: FileIdentity | None = None
@@ -316,7 +325,9 @@ def _install_lock(lock_path: Path) -> Iterator[None]:
                 _unlink_owned_lock(lock_path, candidate_identity)
                 raise
             assert candidate_identity is not None
-            descriptor = candidate
+            # The exclusive path is the lock. Keeping its creation handle open
+            # prevents Windows cleanup/replacement without adding mutual exclusion.
+            os.close(candidate)
             identity = candidate_identity
         except FileExistsError:
             if _recover_stale_lock(lock_path):
@@ -327,11 +338,8 @@ def _install_lock(lock_path: Path) -> Iterator[None]:
     try:
         yield
     finally:
-        if descriptor is not None and identity is not None:
-            try:
-                _unlink_owned_lock(lock_path, identity)
-            finally:
-                os.close(descriptor)
+        if identity is not None:
+            _unlink_owned_lock(lock_path, identity)
 
 
 def _create_runtime(root: Path, runtime_dir: Path) -> None:
@@ -364,6 +372,7 @@ def _create_runtime(root: Path, runtime_dir: Path) -> None:
             check=True,
             cwd=root,
             env=pip_environment,
+            stdout=sys.stderr,
         )
         marker = {
             "fingerprint": runtime_dir.name.removeprefix("runtime-"),
@@ -395,6 +404,25 @@ def resolve_runtime(
         python = Path(configured).expanduser().absolute()
         if not python.is_file():
             raise BootstrapError(f"configured runtime interpreter does not exist: {python}")
+        try:
+            probe = subprocess.run(
+                [
+                    str(python),
+                    "-I",
+                    "-c",
+                    "import sys; print('.'.join(map(str, sys.version_info[:2])))",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=True,
+                env=runtime_environment(env),
+            )
+            version = tuple(int(part) for part in probe.stdout.strip().split("."))
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            raise BootstrapError("configured runtime interpreter could not be validated") from error
+        if len(version) != 2 or version < MINIMUM_PYTHON:
+            raise BootstrapError("configured runtime interpreter requires Python 3.12+")
         return python, runtime_environment(env)
 
     fingerprint = dependency_fingerprint(root)
@@ -413,7 +441,7 @@ def resolve_runtime(
 
 
 def run(argv: Sequence[str] | None = None) -> NoReturn:
-    """Replace this process with the bundled CLI."""
+    """Run the bundled CLI, preserving argv and its exit status on each platform."""
     if sys.version_info < MINIMUM_PYTHON:
         required = ".".join(str(part) for part in MINIMUM_PYTHON)
         raise BootstrapError(f"Python {required}+ is required; found {sys.version.split()[0]}")
@@ -429,7 +457,12 @@ def run(argv: Sequence[str] | None = None) -> NoReturn:
         str(root / "src"),
         *(argv if argv is not None else sys.argv[1:]),
     ]
-    os.execve(str(python), arguments, env)
+    if sys.platform == "win32":
+        # Windows exec does not provide POSIX replacement/argv semantics.
+        # subprocess quotes the argument sequence and waits for the real result.
+        raise SystemExit(subprocess.run(arguments, env=env, check=False).returncode)
+    else:
+        os.execve(str(python), arguments, env)
 
 
 def main() -> NoReturn:

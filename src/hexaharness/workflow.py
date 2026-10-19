@@ -5,6 +5,7 @@ from pathlib import Path
 from hexaharness.config import ensure_configuration_current
 from hexaharness.errors import HarnessStoppedError, PolicyBlockedError, VerificationFailedError
 from hexaharness.events import record_event
+from hexaharness.improvement import ensure_improvement_resolved
 from hexaharness.io import atomic_write_text
 from hexaharness.models import HarnessConfig, TaskKind, TaskState, TaskStatus
 from hexaharness.paths import HarnessPaths
@@ -40,6 +41,7 @@ def complete_task(
         with configuration_lock(project_root):
             ensure_configuration_current(project_root, config)
         state = load_task(project_root, task_id)
+        ensure_improvement_resolved(project_root, config, state)
         if state.status != TaskStatus.ACTIVE:
             raise PolicyBlockedError(
                 f"task {task_id} is {state.status.value}; only active tasks can be completed"
@@ -122,6 +124,7 @@ def complete_task(
                         "emergency stop became active during verification; completion is blocked"
                     )
                 state = load_task(project_root, task_id)
+                ensure_improvement_resolved(project_root, config, state)
                 if not qualifying_task_outputs(
                     project_root, state
                 ) or not required_sensor_evidence_is_current(project_root, config, state):

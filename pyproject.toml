@@ -1,6 +1,6 @@
 [project]
 name = "hexaharness"
-version = "0.4.0"
+version = "1.0.0"
 description = "A host-neutral, six-layer production harness for agent-driven work."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -15,7 +15,7 @@ keywords = [
   "observability",
 ]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
@@ -74,6 +74,7 @@ only-include = [
   "docs",
   "pyproject.toml",
   "runtime-requirements.txt",
+  "requirements-dev.lock",
   "skills",
   "src",
   "tests",
@@ -93,6 +94,7 @@ exclude = [
 ]
 
 [tool.ruff]
+required-version = "==0.16.5"
 line-length = 100
 target-version = "py312"
 
@@ -102,6 +104,7 @@ ignore = ["A005"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]
+"skills/hexaharness/scripts/hexa.py" = ["UP040"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -112,10 +115,12 @@ pretty = true
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"
 testpaths = ["tests"]
+pythonpath = ["src"]
 
 [tool.coverage.run]
 branch = true
 source = ["hexaharness"]
+relative_files = true
 
 [tool.coverage.report]
 fail_under = 85

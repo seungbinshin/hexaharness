@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
+from urllib.request import url2pathname
 
 from hexaharness.errors import PolicyBlockedError
 from hexaharness.external_access import (
@@ -438,7 +439,11 @@ def _local_locator_paths(value: str) -> list[str] | None:
         parsed = urlsplit(match.group("locator"))
         scheme = parsed.scheme.casefold()
 
-    raw_path = unquote(parsed.path)
+    raw_path = (
+        url2pathname(parsed.path)
+        if scheme == "file" or scheme.endswith("+file")
+        else unquote(parsed.path)
+    )
     if parsed.netloc:
         raw_path = f"//{unquote(parsed.netloc)}{raw_path}"
     paths = [raw_path] if raw_path else []

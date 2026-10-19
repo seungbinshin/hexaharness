@@ -25,6 +25,7 @@ from hexaharness.models import (
     PolicyDecision,
     TaskState,
     TaskStatus,
+    task_budget_limits,
     utc_now,
 )
 from hexaharness.paths import HarnessPaths
@@ -147,12 +148,17 @@ def _raise_budget_escalation(
 
 def execution_time_remaining(project_root: Path, config: HarnessConfig, state: TaskState) -> int:
     """Apply the same task budgets to commands and computational sensors."""
-    remaining = config.budgets.max_wall_time_seconds - task_elapsed_seconds(state)
+    limits = task_budget_limits(config, state)
+    remaining = limits.max_wall_time_seconds - task_elapsed_seconds(state)
+    if state.task_budget is not None:
+        remaining = min(remaining, (state.task_budget.deadline_at - utc_now()).total_seconds())
     fired = active_trip_wires(project_root, config, state)
     if fired:
-        if remaining <= 0:
+        if "absolute-deadline" in fired:
+            reason = "task absolute deadline has elapsed"
+        elif remaining <= 0:
             reason = "task wall-time budget is exhausted"
-        elif state.tool_calls >= config.budgets.max_tool_calls:
+        elif state.tool_calls >= limits.max_tool_calls:
             reason = "task tool-call budget is exhausted"
         else:
             reason = f"task budget trip wire fired: {', '.join(fired)}"
@@ -245,13 +251,14 @@ def _run_task_command_locked(
         raise PolicyBlockedError(
             f"task {task_id} is {state.status.value}; review it and use `hexa resume --reactivate`"
         )
-    if retries > config.budgets.max_retries_per_step:
+    limits = task_budget_limits(config, state)
+    if retries > limits.max_retries_per_step:
         _raise_budget_escalation(
             project_root,
             task_id,
             reason=(
                 f"requested retries ({retries}) exceed max_retries_per_step "
-                f"({config.budgets.max_retries_per_step})"
+                f"({limits.max_retries_per_step})"
             ),
             evidence_paths=state.artifacts,
         )
