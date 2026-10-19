@@ -222,8 +222,22 @@ def test_dead_stale_lock_is_recovered(tmp_path: Path, monkeypatch: pytest.Monkey
     monkeypatch.setattr(launcher, "STALE_LOCK_SECONDS", -1.0)
     monkeypatch.setattr(launcher, "_process_is_alive", lambda pid: False)
 
-    assert launcher._recover_stale_lock(lock_path)
+    path_identity = launcher._file_identity(lock_path.stat())
+    with lock_path.open("rb") as stream:
+        descriptor_identity = launcher._file_identity(os.fstat(stream.fileno()))
+    assert launcher._recover_stale_lock(lock_path), (path_identity, descriptor_identity)
     assert not lock_path.exists()
+
+
+def test_windows_lock_identity_uses_consistent_birth_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    launcher = _load_launcher()
+    monkeypatch.setattr(launcher.sys, "platform", "win32")
+    common = {"st_dev": 1, "st_ino": 2, "st_birthtime_ns": 3, "st_mtime_ns": 4, "st_size": 5}
+    by_path = SimpleNamespace(**common, st_ctime_ns=3)
+    by_descriptor = SimpleNamespace(**common, st_ctime_ns=99)
+    assert launcher._file_identity(by_path) == launcher._file_identity(by_descriptor)
+    replacement = SimpleNamespace(**{**common, "st_birthtime_ns": 6}, st_ctime_ns=3)
+    assert launcher._file_identity(by_path) != launcher._file_identity(replacement)
 
 
 def test_stale_recovery_does_not_remove_replacement_lock(

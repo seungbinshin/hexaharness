@@ -101,12 +101,13 @@ def test_checkpoint_survives_reload(harness_project: Path) -> None:
     snapshot = {item["path"]: item for item in started.payload["guidance_snapshot"]}
     assert snapshot[".hexaharness/harness.yaml"]["sha256"]
     checkpointed = next(event for event in task_events if event.event_type == "task.checkpointed")
-    expected_digest = hashlib.sha256(b"mapping\n").hexdigest()
+    expected_bytes = artifact.read_bytes()
+    expected_digest = hashlib.sha256(expected_bytes).hexdigest()
     assert checkpointed.payload["artifacts"] == [
         {
             "path": "docs/map.md",
             "kind": "file",
-            "size_bytes": 8,
+            "size_bytes": len(expected_bytes),
             "sha256": expected_digest,
         }
     ]

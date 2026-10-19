@@ -18,6 +18,7 @@ jobs:
     timeout-minutes: 15
     env:
       PYTHONUTF8: "1"
+      COVERAGE_FILE: .coverage.${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -44,5 +45,30 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run ruff check .
       - run: uv run mypy src skills/hexaharness/scripts/hexa.py
-      - run: uv run pytest --cov --cov-report=term-missing
+      - run: uv run pytest --cov --cov-report=term-missing --cov-fail-under=0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.os }}
+          path: .coverage.*
+          include-hidden-files: true
+          if-no-files-found: error
       - run: uv build
+
+  coverage:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+      # Unsupported POSIX transactions stay skipped on Windows. Enforce the
+      # unchanged global threshold on actual coverage from all three platforms.
+      - run: uv run coverage combine
+      - run: uv run coverage report --fail-under=85

@@ -188,10 +188,16 @@ FileIdentity = tuple[int, int, int, int, int]
 
 def _file_identity(stat_result: os.stat_result) -> FileIdentity:
     """Return the stable filesystem identity used to recognize an owned lock."""
+    # Windows stat/fstat disagree about deprecated ctime semantics (CPython #157671).
+    # Python 3.12+ exposes the same creation timestamp through birthtime on both.
+    if sys.platform == "win32":
+        timestamp = stat_result.st_birthtime_ns
+    else:
+        timestamp = stat_result.st_ctime_ns
     return (
         stat_result.st_dev,
         stat_result.st_ino,
-        stat_result.st_ctime_ns,
+        timestamp,
         stat_result.st_mtime_ns,
         stat_result.st_size,
     )

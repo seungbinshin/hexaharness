@@ -120,6 +120,7 @@ pythonpath = ["src"]
 [tool.coverage.run]
 branch = true
 source = ["hexaharness"]
+relative_files = true
 
 [tool.coverage.report]
 fail_under = 85
