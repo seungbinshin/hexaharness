@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- Added an opt-in bounded text-improvement strategy using the existing task, budget, policy,
+  sensor and evidence lifecycle. Frozen baseline/evaluator identities, fresh evaluation attempts,
+  conservative usage reservations, cancellation, recovery and sensor-gated adoption are enforced.
+- Added versioned host request/receipt handoff with explicit capability assertions, one-dispatch
+  ownership, unknown-result reconciliation and revalidation of retained identity and usage.
+  Actual provider dispatch, executable candidates and semantic judging remain unavailable.
+- Added explicitly authorized task-scoped continuation with inherited consumption and an absolute
+  deadline, without changing project defaults or native permissions.
+- Added read-only `capabilities` discovery and documented CLI/model contracts for host integration.
+- Preserved legacy configuration fingerprints, optional-field wire output and existing approval
+  signatures. Fixed Windows bootstrap/locking/launcher issues and force-init preservation.
+- Added native Linux/macOS/Windows CI, cold/warm bootstrap, combined coverage and fresh installed-wheel
+  checks in space/Unicode paths. Record exact commit results before making release claims.
+
 ## 0.4.0 - 2026-09-30
 
 - Added opt-in exact scratch directories and two-name hardlink pairs with signed parent/lock

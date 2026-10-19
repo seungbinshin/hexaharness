@@ -15,11 +15,19 @@ from hexaharness.improvement_models import (
     EvaluationAttempt,
     GenerationRequest,
     GenerationResponse,
+    HostRequest,
+    HostResult,
     ImprovementConfig,
     ImprovementState,
 )
 from hexaharness.io import atomic_write_text, read_json, write_json
-from hexaharness.models import HarnessConfig, PolicyDecision, TaskState, TaskStatus
+from hexaharness.models import (
+    HarnessConfig,
+    PolicyDecision,
+    TaskState,
+    TaskStatus,
+    task_budget_limits,
+)
 from hexaharness.paths import HarnessPaths
 from hexaharness.policy import evaluate_path
 from hexaharness.runner import execution_time_remaining
@@ -91,6 +99,59 @@ def _candidate(experiment: ImprovementState, candidate_id: str) -> Candidate:
     return experiment.candidates[candidate_id]
 
 
+def _host_request_digest(request: HostRequest) -> str:
+    return _digest(request.model_dump_json(exclude={"request_sha256"}))
+
+
+def _host_evidence(experiment: ImprovementState, request: GenerationRequest) -> None:
+    call = request.host_call
+    if call is None:
+        return
+    envelope = call.request
+    if (
+        _host_request_digest(envelope) != envelope.request_sha256
+        or envelope.adapter_id != call.adapter.adapter_id
+        or envelope.model_id != call.adapter.model_id
+        or envelope.max_tokens != request.reserved_tokens
+        or envelope.max_cost_usd != request.reserved_cost_usd
+        or envelope.parents
+        != {parent: _candidate(experiment, parent).text for parent in request.parents}
+    ):
+        raise PolicyBlockedError("retained host request identity is no longer intact")
+    if call.status == "requested":
+        if (
+            request.status != "pending"
+            or call.receipt_sha256 is not None
+            or call.provenance is not None
+            or call.provider_request_id is not None
+        ):
+            raise PolicyBlockedError("host receipt is missing or inconsistent")
+        return
+    if call.provenance is None or call.receipt_sha256 is None:
+        raise PolicyBlockedError("retained host receipt is missing")
+    try:
+        receipt = HostResult(
+            call_id=envelope.call_id,
+            request_sha256=envelope.request_sha256,
+            adapter_id=envelope.adapter_id,
+            model_id=envelope.model_id,
+            status=call.status,
+            provenance=call.provenance,
+            provider_request_id=call.provider_request_id,
+            text=(
+                _candidate(experiment, request.candidate_id).text
+                if request.candidate_id is not None
+                else None
+            ),
+            tokens=request.actual_tokens,
+            cost_usd=request.actual_cost_usd,
+        )
+    except ValueError as error:
+        raise PolicyBlockedError("retained host receipt is inconsistent") from error
+    if _digest(receipt.model_dump_json()) != call.receipt_sha256:
+        raise PolicyBlockedError("retained host receipt identity or usage changed")
+
+
 def _fresh(root: Path, config: HarnessConfig, experiment: ImprovementState) -> None:
     ensure_configuration_current(root, config)
     if configuration_fingerprint(config) != experiment.config_sha256:
@@ -102,6 +163,8 @@ def _fresh(root: Path, config: HarnessConfig, experiment: ImprovementState) -> N
     for candidate in experiment.candidates.values():
         if _digest(candidate.text) != candidate.sha256:
             raise PolicyBlockedError("candidate or immutable baseline changed")
+    for request in experiment.requests.values():
+        _host_evidence(experiment, request)
 
 
 def _ready(root: Path, config: HarnessConfig, state: TaskState) -> ImprovementState:
@@ -196,9 +259,10 @@ def request_candidate(
             parent not in experiment.candidates for parent in request.parents
         ):
             raise PolicyBlockedError("composition parents must be distinct existing candidates")
+        limits = task_budget_limits(config, state)
         if (
-            state.tokens_used + max_tokens > config.budgets.max_tokens
-            or state.cost_usd + max_cost_usd > config.budgets.max_cost_usd
+            state.tokens_used + max_tokens > limits.max_tokens
+            or state.cost_usd + max_cost_usd > limits.max_cost_usd
         ):
             raise PolicyBlockedError("generation reservation exceeds the remaining task budget")
         # Charge before dispatch. Unknown/crashed calls keep their conservative reservation.
@@ -208,6 +272,69 @@ def request_candidate(
         experiment.requests[key] = request
         _save(root, state, "generation-reserved", key=key)
         return GenerationResponse(created=True, request=request)
+
+
+def record_generation_usage(
+    state: TaskState, request: GenerationRequest, *, tokens: int | None, cost_usd: float | None
+) -> None:
+    if (tokens is not None and tokens < 0) or (
+        cost_usd is not None and (not math.isfinite(cost_usd) or cost_usd < 0)
+    ):
+        raise ValueError("usage must be finite and nonnegative")
+    if (request.actual_tokens is not None and request.actual_tokens != tokens) or (
+        request.actual_cost_usd is not None and request.actual_cost_usd != cost_usd
+    ):
+        raise PolicyBlockedError("previously reported usage cannot be changed")
+    # Charge known overruns immediately, even if the other measurement is still unknown.
+    extra_tokens = max(0, (tokens or 0) - request.reserved_tokens)
+    extra_cost = max(0.0, (cost_usd or 0.0) - request.reserved_cost_usd)
+    state.tokens_used += extra_tokens - max(
+        0, (request.actual_tokens or 0) - request.reserved_tokens
+    )
+    state.cost_usd += extra_cost - max(
+        0.0, (request.actual_cost_usd or 0.0) - request.reserved_cost_usd
+    )
+    request.actual_tokens, request.actual_cost_usd = tokens, cost_usd
+    if tokens is None or cost_usd is None:
+        request.status = "unknown"
+    else:
+        request.status = "over-budget" if extra_tokens or extra_cost else "settled"
+
+
+def submit_candidate_to_state(
+    state: TaskState, *, key: str, text: str, tokens: int | None, cost_usd: float | None
+) -> Candidate:
+    if (tokens is not None and tokens < 0) or (
+        cost_usd is not None and (not math.isfinite(cost_usd) or cost_usd < 0)
+    ):
+        raise ValueError("usage must be finite and nonnegative")
+    if len(text.encode("utf-8")) > 65536:
+        raise ValueError("candidate exceeds the 64 KiB limit")
+    experiment = _get(state)
+    request = experiment.requests.get(key)
+    if request is None:
+        raise PolicyBlockedError("reserve generation before submitting a candidate")
+    if (request.actual_tokens is not None and request.actual_tokens != tokens) or (
+        request.actual_cost_usd is not None and request.actual_cost_usd != cost_usd
+    ):
+        raise PolicyBlockedError("previously reported usage cannot be changed")
+    if request.candidate_id is not None:
+        existing = experiment.candidates[request.candidate_id]
+        if existing.text != text:
+            raise PolicyBlockedError("idempotency key was already used for different output")
+        if request.status in {"settled", "over-budget"}:
+            if request.actual_tokens != tokens or request.actual_cost_usd != cost_usd:
+                raise PolicyBlockedError("settled usage cannot be replaced by different usage")
+            return existing
+    else:
+        candidate_id = f"candidate-{uuid.uuid4().hex}"
+        existing = Candidate(
+            candidate_id=candidate_id, text=text, sha256=_digest(text), parents=request.parents
+        )
+        experiment.candidates[candidate_id] = existing
+        request.candidate_id = candidate_id
+    record_generation_usage(state, request, tokens=tokens, cost_usd=cost_usd)
+    return existing
 
 
 def submit_candidate(
@@ -220,54 +347,17 @@ def submit_candidate(
     tokens: int | None,
     cost_usd: float | None,
 ) -> Candidate:
-    if (tokens is not None and tokens < 0) or (
-        cost_usd is not None and (not math.isfinite(cost_usd) or cost_usd < 0)
-    ):
-        raise ValueError("usage must be finite and nonnegative")
-    if len(text.encode("utf-8")) > 65536:
-        raise ValueError("candidate exceeds the 64 KiB limit")
     with task_lock(root, task_id):
         state = load_task(root, task_id)
-        experiment = _get(state)
-        request = experiment.requests.get(key)
-        if request is None:
-            raise PolicyBlockedError("reserve generation before submitting a candidate")
-        if (request.actual_tokens is not None and request.actual_tokens != tokens) or (
-            request.actual_cost_usd is not None and request.actual_cost_usd != cost_usd
-        ):
-            raise PolicyBlockedError("previously reported usage cannot be changed")
-        if request.candidate_id is not None:
-            existing = experiment.candidates[request.candidate_id]
-            if existing.text != text:
-                raise PolicyBlockedError("idempotency key was already used for different output")
-            if request.status in {"settled", "over-budget"}:
-                if request.actual_tokens != tokens or request.actual_cost_usd != cost_usd:
-                    raise PolicyBlockedError("settled usage cannot be replaced by different usage")
-                return existing
-        else:
-            candidate_id = f"candidate-{uuid.uuid4().hex}"
-            existing = Candidate(
-                candidate_id=candidate_id, text=text, sha256=_digest(text), parents=request.parents
-            )
-            experiment.candidates[candidate_id] = existing
-            request.candidate_id = candidate_id
-        # Charge known overruns immediately, even if the other measurement is still unknown.
-        extra_tokens = max(0, (tokens or 0) - request.reserved_tokens)
-        extra_cost = max(0.0, (cost_usd or 0.0) - request.reserved_cost_usd)
-        state.tokens_used += extra_tokens - max(
-            0, (request.actual_tokens or 0) - request.reserved_tokens
+        request = _get(state).requests.get(key)
+        if request is not None and request.host_call is not None:
+            raise PolicyBlockedError("host-managed generation requires a bound host receipt")
+        candidate = submit_candidate_to_state(
+            state, key=key, text=text, tokens=tokens, cost_usd=cost_usd
         )
-        state.cost_usd += extra_cost - max(
-            0.0, (request.actual_cost_usd or 0.0) - request.reserved_cost_usd
-        )
-        request.actual_tokens, request.actual_cost_usd = tokens, cost_usd
-        if tokens is None or cost_usd is None:
-            request.status = "unknown"
-        else:
-            request.status = "over-budget" if extra_tokens or extra_cost else "settled"
         # Usage reconciliation never dispatches work; accept late reports after a stop.
-        _save(root, state, "generation-reported", key=key, usage=request.status)
-        return existing
+        _save(root, state, "generation-reported", key=key, usage=_get(state).requests[key].status)
+        return candidate
 
 
 def _score(text: str, specification: ImprovementConfig) -> tuple[float, bool, dict[str, bool]]:

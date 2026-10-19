@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class StrictModel(BaseModel):
@@ -36,6 +37,73 @@ class ImprovementConfig(StrictModel):
         return value
 
 
+class HostAdapterSpec(StrictModel):
+    """Host assertions about the selected provider; never native permission grants."""
+
+    adapter_id: str = Field(min_length=1, max_length=100)
+    model_id: str = Field(min_length=1, max_length=100)
+    token_limit_enforced: bool = Field(default=False, strict=True)
+    cost_limit_enforced: bool = Field(default=False, strict=True)
+    cancellation_supported: bool = Field(default=False, strict=True)
+    reconciliation_supported: bool = Field(default=False, strict=True)
+
+
+class HostRequest(StrictModel):
+    schema_version: Literal[1] = 1
+    call_id: str
+    request_sha256: str
+    adapter_id: str
+    model_id: str
+    goal: str = Field(min_length=1, max_length=2000)
+    parents: dict[str, str]
+    max_tokens: int = Field(ge=1, strict=True)
+    max_cost_usd: float = Field(ge=0)
+    deadline_at: datetime
+    tools: Literal["disabled"] = "disabled"
+    max_calls: Literal[1] = 1
+
+
+class HostCall(StrictModel):
+    request: HostRequest
+    adapter: HostAdapterSpec
+    timeout_seconds: int = Field(ge=1, le=3600)
+    status: Literal["requested", "unknown", "completed", "cancelled", "failed"] = "requested"
+    cancel_requested: bool = False
+    provider_request_id: str | None = None
+    provenance: Literal["provider", "fixture"] | None = None
+    receipt_sha256: str | None = None
+
+
+class HostTransfer(StrictModel):
+    schema_version: Literal[1] = 1
+    created: bool
+    request: HostRequest
+
+
+class HostResult(StrictModel):
+    schema_version: Literal[1] = 1
+    call_id: str
+    request_sha256: str
+    adapter_id: str
+    model_id: str
+    status: Literal["completed", "cancelled", "failed", "unknown"]
+    provenance: Literal["provider", "fixture"]
+    provider_request_id: str | None = Field(default=None, max_length=200)
+    text: str | None = Field(default=None, max_length=65536)
+    tokens: int | None = Field(default=None, ge=0, strict=True)
+    cost_usd: float | None = Field(default=None, ge=0, strict=True)
+
+    @model_validator(mode="after")
+    def coherent_result(self) -> HostResult:
+        if (self.status == "completed") != (self.text is not None):
+            raise ValueError("only a completed host result contains candidate text")
+        if self.status != "unknown" and not self.provider_request_id:
+            raise ValueError("a resolved result requires a provider/fixture request ID")
+        if self.text is not None and len(self.text.encode("utf-8")) > 65536:
+            raise ValueError("candidate exceeds 64 KiB")
+        return self
+
+
 class GenerationRequest(StrictModel):
     key: str = Field(min_length=1, max_length=100)
     parents: list[str]
@@ -45,6 +113,7 @@ class GenerationRequest(StrictModel):
     candidate_id: str | None = None
     actual_tokens: int | None = Field(default=None, ge=0)
     actual_cost_usd: float | None = Field(default=None, ge=0)
+    host_call: HostCall | None = None
 
 
 class Candidate(StrictModel):

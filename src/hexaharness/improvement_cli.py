@@ -11,6 +11,11 @@ import typer
 from pydantic import BaseModel
 
 from hexaharness.config import load_config
+from hexaharness.host_adapter import (
+    prepare_host_request,
+    receive_host_result,
+    request_host_cancellation,
+)
 from hexaharness.improvement import (
     _read_text,
     _safe_file,
@@ -22,6 +27,7 @@ from hexaharness.improvement import (
     resume_improvement,
     submit_candidate,
 )
+from hexaharness.improvement_models import HostAdapterSpec, HostResult
 from hexaharness.models import PolicyDecision
 from hexaharness.paths import find_project_root
 from hexaharness.policy import evaluate_path
@@ -37,6 +43,9 @@ class ImprovementAction(StrEnum):
     CANCEL = "cancel"
     RESUME = "resume"
     STATUS = "status"
+    HOST_REQUEST = "host-request"
+    HOST_RESULT = "host-result"
+    HOST_CANCEL = "host-cancel"
 
 
 def improve(
@@ -52,17 +61,60 @@ def improve(
     tokens: Annotated[int | None, typer.Option(min=0)] = None,
     cost_usd: Annotated[float | None, typer.Option(min=0)] = None,
     abandon: Annotated[bool, typer.Option()] = False,
+    adapter_file: Annotated[Path | None, typer.Option()] = None,
+    receipt_file: Annotated[Path | None, typer.Option()] = None,
+    goal: Annotated[str | None, typer.Option()] = None,
+    timeout_seconds: Annotated[int, typer.Option(min=1, max=3600)] = 60,
 ) -> None:
     """Run the versioned built-in text improvement protocol on an existing task."""
     project = (root or find_project_root()).resolve()
     config = load_config(project)
     result: BaseModel | None
     if (
-        action in {ImprovementAction.REQUEST, ImprovementAction.SUBMIT, ImprovementAction.EVALUATE}
+        action
+        in {
+            ImprovementAction.REQUEST,
+            ImprovementAction.SUBMIT,
+            ImprovementAction.EVALUATE,
+            ImprovementAction.HOST_REQUEST,
+            ImprovementAction.HOST_RESULT,
+            ImprovementAction.HOST_CANCEL,
+        }
         and not key
     ):
         raise typer.BadParameter("--key is required for idempotent generation/evaluation")
-    if action == ImprovementAction.BEGIN:
+    if action in {ImprovementAction.HOST_REQUEST, ImprovementAction.HOST_RESULT}:
+        assert key is not None
+        source = adapter_file if action == ImprovementAction.HOST_REQUEST else receipt_file
+        if source is None:
+            raise typer.BadParameter("provide --adapter-file or --receipt-file for the host action")
+        path = _safe_file(project, str(source))
+        if evaluate_path(config, project, path, write=False).decision != PolicyDecision.ALLOW:
+            raise typer.BadParameter("host contract input is not an allowed project file")
+        payload = _read_text(path)
+        if action == ImprovementAction.HOST_REQUEST:
+            if not goal:
+                raise typer.BadParameter("--goal is required for a host request")
+            result = prepare_host_request(
+                project,
+                config,
+                task_id,
+                key=key,
+                adapter=HostAdapterSpec.model_validate_json(payload),
+                goal=goal,
+                max_tokens=max_tokens,
+                max_cost_usd=max_cost_usd,
+                timeout_seconds=timeout_seconds,
+                parents=parent,
+            )
+        else:
+            result = receive_host_result(
+                project, config, task_id, key=key, result=HostResult.model_validate_json(payload)
+            )
+    elif action == ImprovementAction.HOST_CANCEL:
+        assert key is not None
+        result = request_host_cancellation(project, task_id, key=key)
+    elif action == ImprovementAction.BEGIN:
         result = begin_improvement(project, config, task_id)
     elif action == ImprovementAction.REQUEST:
         assert key is not None

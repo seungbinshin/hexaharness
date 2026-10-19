@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shlex
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -9,6 +10,7 @@ import typer
 
 from hexaharness import __version__
 from hexaharness.audit import audit_harness, audit_summary
+from hexaharness.capabilities import runtime_capabilities
 from hexaharness.config import (
     CURRENT_SCHEMA_VERSION,
     configuration_issues,
@@ -29,6 +31,7 @@ from hexaharness.io import redact_argv, redact_text_using_argv
 from hexaharness.learning import record_learning
 from hexaharness.models import (
     AuditStatus,
+    BudgetConfig,
     ExternalAccessRequest,
     FailureClass,
     HarnessLayer,
@@ -57,6 +60,7 @@ from hexaharness.state import (
     start_task,
     task_lock,
 )
+from hexaharness.task_budget import continue_task
 from hexaharness.tripwires import active_trip_wires
 from hexaharness.workflow import (
     complete_task,
@@ -134,6 +138,12 @@ def _parse_override(value: str | None) -> list[str] | None:
 def version() -> None:
     """Print the installed HexaHarness version."""
     typer.echo(__version__)
+
+
+@app.command()
+def capabilities() -> None:
+    """Print supported protocols and limitations without initializing or reading a project."""
+    _emit_json(runtime_capabilities())
 
 
 @app.command("init")
@@ -236,6 +246,51 @@ def start(
     project_root = _project_root(root)
     ensure_configuration_ready(load_config(project_root), project_root)
     _emit_json(start_task(project_root, goal, unattended=unattended, kind=kind))
+
+
+@app.command("continue")
+def continue_command(
+    goal: Annotated[str, typer.Argument()],
+    source: Annotated[
+        list[str], typer.Option(help="Terminal source task; repeat for disjoint work.")
+    ],
+    deadline: Annotated[str, typer.Option(help="Absolute ISO-8601 deadline with timezone.")],
+    reason: Annotated[str, typer.Option(help="Scope of the user's authorization.")],
+    max_wall_seconds: Annotated[int, typer.Option(min=1, max=604_800)],
+    max_tools: Annotated[int, typer.Option(min=1, max=10_000)],
+    max_tokens: Annotated[int, typer.Option(min=1)],
+    max_cost_usd: Annotated[float, typer.Option(min=0)],
+    root: RootOption = None,
+    approved: Annotated[
+        bool, typer.Option(help="Assert existing authorization for exact limits.")
+    ] = False,
+    unattended: Annotated[bool, typer.Option()] = False,
+    kind: Annotated[TaskKind, typer.Option()] = TaskKind.CHANGE,
+) -> None:
+    """Start an authorized successor with inherited usage and no project config changes."""
+    project_root = _project_root(root)
+    config = load_config(project_root)
+    limits = BudgetConfig(
+        max_retries_per_step=config.budgets.max_retries_per_step,
+        max_wall_time_seconds=max_wall_seconds,
+        max_tool_calls=max_tools,
+        max_tokens=max_tokens,
+        max_cost_usd=max_cost_usd,
+    )
+    _emit_json(
+        continue_task(
+            project_root,
+            config,
+            source_task_ids=source,
+            goal=goal,
+            limits=limits,
+            deadline_at=datetime.fromisoformat(deadline),
+            reason=reason,
+            approved=approved,
+            unattended=unattended,
+            kind=kind,
+        )
+    )
 
 
 @app.command()

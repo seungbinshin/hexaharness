@@ -8,8 +8,9 @@ The first supported domain is a UTF-8 `.txt` or `.md` **data artifact**, at most
 The independent `literal-text-v1` evaluator checks case-sensitive literal presence/absence,
 with weighted scores and mandatory checks. It never executes or interprets candidate text.
 This verifies exactly the configured checks, not semantic quality, model performance, code
-safety, or production effectiveness. Executable-code optimization, external evaluators and
-model adapters are not implemented. Unsupported evaluator types are rejected.
+safety, or production effectiveness. Executable-code optimization and external evaluators are
+not implemented. Unsupported evaluator types are rejected. The [host adapter](host-adapter.md)
+binds model requests and receipts; actual provider execution remains the host's responsibility.
 
 Add to the project's existing `.hexaharness/harness.yaml`:
 
@@ -92,4 +93,5 @@ The local deterministic examples prove bounded control flow and evidence integri
 not establish useful real-model improvement. A general code-candidate version needs a measured
 host adapter, enforced execution isolation, evaluator independence attestation, external-call
 reconciliation and held-out quality trials before automatic adoption can be enabled for it.
-Windows process-group cancellation and fresh Python 3.12 installation need Windows execution.
+Windows process-tree cancellation and final-artifact installation need direct Windows evidence;
+passing launcher/bootstrap tests alone are not equivalent to those checks.

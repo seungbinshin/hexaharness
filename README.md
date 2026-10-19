@@ -198,6 +198,9 @@ task-scoped content or existence change instead of trusting timestamps.
 | `hexa run` | Execute one policy-gated argument array without a shell; distinguish agent review from human approval |
 | `hexa verify` | Run computational sensors and retain evidence |
 | `hexa complete` | Require sensors before advancing to completed |
+| `hexa capabilities` | Read supported contracts and limitations without a project |
+| `hexa continue` | Authorize task-only limits while retaining prior consumption |
+| `hexa improve` | Compare bounded text candidates through the existing task ledger |
 | `hexa resume` | Recover or explicitly reactivate a checkpoint |
 | `hexa learn` | Convert an observed failure into a traceable correction |
 | `hexa audit` | Evaluate the twelve-item production-readiness checklist |
@@ -233,7 +236,10 @@ and distinguish a host repair from a project fix. It does not modify global Code
 The [built-in improvement preview](docs/improvement.md) uses the existing task, configuration,
 CLI and primary skill. It currently supports bounded text-artifact comparisons against a fixed
 literal rubric, with usage reservations, retained baseline, cancellation/recovery and a sensor
-promotion gate. It does not yet optimize executable code or provide a model adapter.
+promotion gate. The [host handoff protocol](docs/host-adapter.md) binds requests and measured
+receipts; the host owns actual model execution. Executable-code optimization and provider dispatch
+are unavailable. See the [integration contract](docs/api-contract.md),
+[task-scoped budgets](docs/task-budgets.md), and [release acceptance ledger](docs/release-readiness.md).
 
 ```bash
 uv sync --locked --python 3.12

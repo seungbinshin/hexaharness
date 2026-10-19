@@ -53,6 +53,31 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
       - run: uv build
+      - name: Verify fresh wheel in a space and Unicode path
+        shell: python
+        run: |
+          import hashlib, os, pathlib, subprocess, sys, tomllib, venv
+          checkout = pathlib.Path.cwd()
+          expected = tomllib.loads((checkout / "pyproject.toml").read_text())["project"]["version"]
+          destination = pathlib.Path(os.environ["RUNNER_TEMP"]) / "wheel smoke 한글"
+          venv.EnvBuilder(with_pip=True, symlinks=os.name != "nt").create(destination)
+          python = destination / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+          subprocess.run([str(python), "-I", "-m", "pip", "install", "--require-hashes",
+                          "-r", str(checkout / "runtime-requirements.txt")], check=True)
+          wheel = checkout / "dist" / f"hexaharness-{expected}-py3-none-any.whl"
+          subprocess.run([str(python), "-I", "-m", "pip", "install", "--no-deps", str(wheel)], check=True)
+          result = subprocess.run([str(python), "-I", str(checkout / "tests/wheel_install_probe.py"),
+                                   expected], cwd=destination, check=True, capture_output=True, text=True)
+          print(result.stdout)
+          (checkout / "dist" / "wheel-install-evidence.json").write_text(result.stdout, encoding="utf-8")
+          lines = [f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n"
+                   for p in sorted((checkout / "dist").iterdir()) if p.suffix in (".whl", ".gz")]
+          (checkout / "dist" / "SHA256SUMS").write_text("".join(lines), encoding="utf-8")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distribution-${{ matrix.os }}
+          path: dist/*
+          if-no-files-found: error
 
   coverage:
     needs: quality
