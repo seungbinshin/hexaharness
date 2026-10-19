@@ -62,6 +62,17 @@ def test_compare_promote_preserves_baseline_and_uses_parent_budget(harness_proje
     assert state.tool_calls >= 4  # generation, two comparisons, required sensor
 
 
+def test_forced_initialization_preserves_active_improvement_config(harness_project: Path) -> None:
+    from hexaharness.scaffold import initialize_project
+
+    task_id = setup_experiment(harness_project)
+    before = load_config(harness_project)
+    initialize_project(harness_project, force=True)
+    after = load_config(harness_project)
+    assert after.improvement == before.improvement
+    evaluate_candidate(harness_project, after, task_id, candidate_id="baseline", key="after-init")
+
+
 def test_duplicate_submission_does_not_reset_budget_or_create_candidates(
     harness_project: Path,
 ) -> None:
