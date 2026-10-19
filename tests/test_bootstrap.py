@@ -168,6 +168,29 @@ def test_install_lock_removes_the_owned_lock(tmp_path: Path) -> None:
     assert not lock_path.exists()
 
 
+def test_install_lock_closes_creation_handle_before_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    launcher = _load_launcher()
+    lock_path = tmp_path / "runtime.lock"
+    opened: list[int] = []
+    original_open = os.open
+
+    def track_open(path: Path, flags: int, mode: int) -> int:
+        descriptor = original_open(path, flags, mode)
+        opened.append(descriptor)
+        return descriptor
+
+    monkeypatch.setattr(launcher.os, "open", track_open)
+    with launcher._install_lock(lock_path):
+        assert lock_path.is_file()
+        assert len(opened) == 1
+        # Windows cannot unlink a file held open without delete sharing.
+        with pytest.raises(OSError):
+            os.fstat(opened[0])
+    assert not lock_path.exists()
+
+
 def test_install_lock_does_not_remove_a_replacement_lock(tmp_path: Path) -> None:
     launcher = _load_launcher()
     lock_path = tmp_path / "runtime.lock"

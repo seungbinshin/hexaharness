@@ -297,9 +297,8 @@ def _recover_stale_lock(lock_path: Path) -> bool:
 def _install_lock(lock_path: Path) -> Iterator[None]:
     """Serialize first-use installation with stale-lock recovery."""
     deadline = time.monotonic() + LOCK_TIMEOUT_SECONDS
-    descriptor: int | None = None
     identity: FileIdentity | None = None
-    while descriptor is None:
+    while identity is None:
         try:
             candidate = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
             candidate_identity: FileIdentity | None = None
@@ -319,7 +318,9 @@ def _install_lock(lock_path: Path) -> Iterator[None]:
                 _unlink_owned_lock(lock_path, candidate_identity)
                 raise
             assert candidate_identity is not None
-            descriptor = candidate
+            # The exclusive path is the lock. Keeping its creation handle open
+            # prevents Windows cleanup/replacement without adding mutual exclusion.
+            os.close(candidate)
             identity = candidate_identity
         except FileExistsError:
             if _recover_stale_lock(lock_path):
@@ -330,11 +331,8 @@ def _install_lock(lock_path: Path) -> Iterator[None]:
     try:
         yield
     finally:
-        if descriptor is not None and identity is not None:
-            try:
-                _unlink_owned_lock(lock_path, identity)
-            finally:
-                os.close(descriptor)
+        if identity is not None:
+            _unlink_owned_lock(lock_path, identity)
 
 
 def _create_runtime(root: Path, runtime_dir: Path) -> None:
