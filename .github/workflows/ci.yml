@@ -28,11 +28,19 @@ jobs:
           python-version: "3.12"
       - run: uv sync --locked
       - name: Test cold and warm plugin bootstrap
+        shell: python
         env:
           HEXAHARNESS_CACHE_DIR: ${{ runner.temp }}/hexaharness-bootstrap
         run: |
-          python -I skills/hexaharness/scripts/hexa.py version
-          python -I skills/hexaharness/scripts/hexa.py version
+          import pathlib, subprocess, sys, tomllib
+          expected = tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"]
+          for phase in ("cold", "warm"):
+              result = subprocess.run(
+                  [sys.executable, "-I", "skills/hexaharness/scripts/hexa.py", "version"],
+                  check=True, capture_output=True, text=True,
+              )
+              assert result.stdout.strip() == expected, (phase, result.stdout, result.stderr)
+              print(f"{phase}: {result.stdout.strip()}")
       - run: uv run ruff format --check .
       - run: uv run ruff check .
       - run: uv run mypy src skills/hexaharness/scripts/hexa.py

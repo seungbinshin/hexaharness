@@ -296,6 +296,35 @@ def test_configured_runtime_must_exist(tmp_path: Path) -> None:
         )
 
 
+def test_windows_launcher_preserves_argv_and_child_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = _load_launcher()
+    environment = {"PYTHONNOUSERSITE": "1"}
+    monkeypatch.setattr(launcher.sys, "platform", "win32")
+    monkeypatch.setattr(
+        launcher, "resolve_runtime", lambda root: (Path(sys.executable), environment)
+    )
+
+    def child(
+        argv: list[str], *, env: dict[str, str], check: bool
+    ) -> subprocess.CompletedProcess[str]:
+        assert argv[1:4] == ["-I", "-c", launcher.MODULE_LOADER]
+        assert argv[-1] == "argument with spaces and 한글"
+        assert env == environment
+        assert check is False
+        return subprocess.CompletedProcess(argv, 17)
+
+    def reject_exec(*args: object) -> None:
+        pytest.fail("Windows must wait and preserve argv through subprocess")
+
+    monkeypatch.setattr(launcher.subprocess, "run", child)
+    monkeypatch.setattr(launcher.os, "execve", reject_exec)
+    with pytest.raises(SystemExit) as result:
+        launcher.run(["argument with spaces and 한글"])
+    assert result.value.code == 17
+
+
 def test_launcher_executes_bundled_source_with_configured_runtime() -> None:
     environment = os.environ.copy()
     environment["HEXAHARNESS_RUNTIME_PYTHON"] = sys.executable

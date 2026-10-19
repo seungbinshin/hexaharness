@@ -434,7 +434,7 @@ def resolve_runtime(
 
 
 def run(argv: Sequence[str] | None = None) -> NoReturn:
-    """Replace this process with the bundled CLI."""
+    """Run the bundled CLI, preserving argv and its exit status on each platform."""
     if sys.version_info < MINIMUM_PYTHON:
         required = ".".join(str(part) for part in MINIMUM_PYTHON)
         raise BootstrapError(f"Python {required}+ is required; found {sys.version.split()[0]}")
@@ -450,7 +450,12 @@ def run(argv: Sequence[str] | None = None) -> NoReturn:
         str(root / "src"),
         *(argv if argv is not None else sys.argv[1:]),
     ]
-    os.execve(str(python), arguments, env)
+    if sys.platform == "win32":
+        # Windows exec does not provide POSIX replacement/argv semantics.
+        # subprocess quotes the argument sequence and waits for the real result.
+        raise SystemExit(subprocess.run(arguments, env=env, check=False).returncode)
+    else:
+        os.execve(str(python), arguments, env)
 
 
 def main() -> NoReturn:
