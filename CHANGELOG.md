@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.1.0 - 2026-11-17
+
+- Added a process profile. Runtime controls apply on every host; the process modules `plan`,
+  `repair`, `verify` and `review` are selected for each host with `HEXAHARNESS_PROFILE`. The
+  default `guided` keeps the 1.0 process guidance. `lean` and module lists are operator opt-ins;
+  an unrecognized value resolves to every module. The skill does not select a profile from the
+  model name.
+- Added `skills/hexaharness/scripts/process_profile.py`, a standard-library resolver with tests,
+  and module marks in `references/agent-lifecycle.md`. Under `lean`, single-session supervised
+  work in an uninitialized project stays outside the runtime (`references/lean-profile.md`).
+- Documented runtime behavior that the host could not see: write observations must precede the
+  edit, the repeated-error trip wire ignores output, wall time includes host reasoning time, and
+  control commands do not consume the tool-call budget. Added the `--unattended` rule and an
+  end-of-turn rule for unattended runs.
+- Added `docs/model-calibration.md`: profile selection by evidence, signals for each module,
+  measured task cost, limit guidance and observed runtime limits.
+- Version 1.1.0 in every manifest so that installed hosts receive the update.
+- No runtime, policy, configuration, or approval-boundary changes.
+
 ## 1.0.0 - 2026-10-19
 
 - Stabilized the existing execution, approval, checkpoint and evidence contracts; experimental

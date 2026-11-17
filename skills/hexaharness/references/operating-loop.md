@@ -12,11 +12,20 @@ details internal unless they are needed for recovery or audit.
 3. Otherwise run `<HEXA> start --root <repo> --kind <change|review|release> "<observable goal>"`.
    `change` is the default; use `review` for findings and `release` for publication-only work.
    Keep the returned task ID internal. Choose the kind at task creation; do not relabel finished work.
+   Add `--unattended` only when no person supervises the run: a scheduled or headless session, or
+   one that the user said they will not watch. The flag is audit evidence; leave it off when unsure.
 4. After a restart, run `<HEXA> resume --root <repo> <task-id>` and continue from `next_step`.
+
+Control commands (`doctor`, `status`, `policy-check`, `checkpoint`) do not consume the tool-call
+budget. Control commands that do not depend on each other's output may share one host call.
 
 ## Execute
 
 - Check a command without running it: `<HEXA> policy-check --root <repo> -- <argv...>`.
+- Record a write observation before the first edit of a file: `<HEXA> policy-check --root <repo>
+  --task-id <task-id> --path <path> --write`. The command accepts one path; use one invocation for
+  each planned target. `complete` accepts a file as evidence only when its observation is older
+  than its change.
 - Run an allowed command: `<HEXA> run --root <repo> <task-id> -- <argv...>`.
 - An ask decision exits with status 3 and reports one of two boundaries. For `agent-review`, inspect
   the exact argv and implementation; rerun with `--reviewed` only for project-local, reversible work
@@ -103,6 +112,12 @@ pre-publication gate is needed. A normal failed local command leaves the task ac
 repair. Repeated identical failures, exhausted retries, timeouts, and budget limits preserve state
 and escalate.
 
+The repeated-error trip wire identifies a failure by argv, exit code, and timeout state, not by
+output. At the default threshold, three consecutive failures of one command with one exit code
+escalate the task, also when each run failed for a different reason. A successful `run` or a
+failure of a different command resets the count, so run the narrowest check that covers each
+repair before the broad suite.
+
 Completion evidence must be fresh, attached to this task, and bound to a pre-write observation:
 
 | Kind | Required output |
@@ -116,8 +131,13 @@ published commit/version, and observed result. A cancelled or unresolved action 
 successful release. No kind may complete with an external action pending.
 
 Commands and task-scoped sensors share the task's time, tool-call, and host-reported usage budgets.
-Time spent at the durable pending-approval checkpoint is excluded from wall time. Reactivating a
-task does not reset its consumed budget. Unscoped operator `verify` uses individual sensor timeouts.
+Wall time runs from task start, so it includes host reasoning time between commands. Time spent at
+the durable pending-approval checkpoint is excluded from wall time. Reactivating a task does not
+reset its consumed budget. Unscoped operator `verify` uses individual sensor timeouts. The limits
+are safety bounds, not a schedule: keep the discovery and verification that the work needs. When
+the work clearly cannot fit the limits that `doctor` reports, state the limits it needs before
+`start`. Only the user changes project limits; see
+[model calibration](../../../docs/model-calibration.md).
 
 When execution cannot continue, preserve the checkpoint and use `<HEXA> stop <task-id> --reason
 "<reason>"`. A project-wide `<HEXA> stop` creates `.hexaharness/STOP`, which blocks subsequent command

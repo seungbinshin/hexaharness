@@ -4,6 +4,10 @@ Use this reference to move a project forward without requiring the user to opera
 The host agent owns reasoning and implementation; the bundled runtime owns deterministic controls
 and evidence.
 
+A step or section with a mark (`[plan]`, `[repair]`, `[verify]`, `[review]`) belongs to a process
+module. Apply it only when the process profile of the primary skill lists that module. Text without
+a mark always applies.
+
 ## Choose the path
 
 | Situation | Path | First durable output |
@@ -16,7 +20,7 @@ and evidence.
 | Ongoing upkeep | Maintain | Prioritized risk, dependency, or failure-derived improvement |
 | Harness quality question | Audit | Twelve-check evidence report and ordered remedies |
 
-## Discover and design
+## Discover and design `[plan]`
 
 1. Read applicable project instructions and inspect the repository before asking questions.
 2. Separate known facts, reversible defaults, and material unknowns. Ask only about material unknowns
@@ -40,8 +44,8 @@ and evidence.
    marked for agent review, inspect the exact argv and underlying script before using `--reviewed`;
    do so only for project-local, reversible work already covered by the user's request. External or
    hard-to-reverse actions always require exact human approval and `--approved`.
-4. On failure, classify the cause before acting: implementation defect, incorrect assumption,
-   missing context, environment failure, unsafe action, or flaky/transient tool.
+4. `[repair]` On failure, classify the cause before acting: implementation defect, incorrect
+   assumption, missing context, environment failure, unsafe action, or flaky/transient tool.
 5. Repair the cause, then rerun the narrow check before the full required sensor set. Preserve the
    strongest artifact when a trip wire or budget ends the attempt.
 
@@ -65,17 +69,18 @@ worker a bounded scope and require a structured return containing the task ident
 checks actually run, assumptions, and unresolved risks. Keep the shared HexaHarness checkpoint as
 the source of truth rather than sharing free-form reasoning between workers.
 
-For material review, assign a reviewer that did not produce the artifact. The reviewer reports
-findings and evidence without silently rewriting the producer's work; the lifecycle operator routes
-failures back for repair and applies the same retry and escalation bounds.
+`[review]` For material review, assign a reviewer that did not produce the artifact. The reviewer
+reports findings and evidence without silently rewriting the producer's work; the lifecycle
+operator routes failures back for repair and applies the same retry and escalation bounds.
 
 ## Verify and hand off
 
-1. Map each acceptance criterion to computational evidence where possible.
-2. Run the configured required sensors and task-specific checks. If a semantic review is required,
-   use an independent reviewer and label judgment separately from deterministic evidence.
-3. Inspect the final diff for unrelated changes, sensitive material, generated noise, and missing
-   documentation.
+1. `[verify]` Map each acceptance criterion to computational evidence where possible.
+2. `[verify]` Run the configured required sensors and task-specific checks. `[review]` If a semantic
+   review is required, use an independent reviewer and label judgment separately from
+   deterministic evidence.
+3. `[verify]` Inspect the final diff for unrelated changes, sensitive material, generated noise, and
+   missing documentation.
 4. Complete the task only after required checks pass and all requested actions are finished. Report
    skipped checks and reasons explicitly.
 5. If push, publish, deploy, deletion, shared permission changes, messages, billing, or another
