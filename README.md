@@ -95,6 +95,22 @@ Skill selection is performed by the host model. The broad lifecycle metadata mak
 work eligible for automatic selection; explicit invocation is available when a host does not select
 it.
 
+## Process profile
+
+Runtime controls apply on every host. Process instructions (how to plan, repair, verify, and
+review) compensate for limits of the host model, so the operator selects them for each host with
+the `HEXAHARNESS_PROFILE` environment variable.
+
+| Value | Process modules | Use |
+|---|---|---|
+| unset or `guided` | `plan`, `repair`, `verify`, `review` | Default. The process guidance of 1.0. Use it for a host model that you did not measure. |
+| a list such as `verify,review` | The listed modules | A reduction that you measured for this host. |
+| `lean` | None | A host model that plans, verifies, and corrects its work without instruction. Single-session supervised edits in an uninitialized project stay outside the runtime. |
+
+Set the variable in the settings of one host, not in a login shell that other hosts inherit. The
+skill never selects a profile from the model name. See [model calibration](docs/model-calibration.md)
+for the selection procedure and its evidence.
+
 ## Autonomy and approval boundary
 
 This table is the skill's default operating policy. The deterministic runtime checks only commands

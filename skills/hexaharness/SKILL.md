@@ -9,6 +9,21 @@ Turn the user's project goal into verified work. You own design, implementation,
 and communication; the bundled runtime records policy decisions, execution bounds, checkpoints,
 and evidence. Keep commands, task IDs, and routine bookkeeping internal.
 
+## Process profile
+
+**Controls** (the runtime protocol, the approval boundary, the completion gate) apply on every
+host. **Process modules** (`plan`, `repair`, `verify`, `review`) tell you how to do the work. They
+compensate for limits of the host model, so the operator selects them for each host.
+
+Resolve [process_profile.py](scripts/process_profile.py) relative to this skill and run
+`python -I <script>` before other work. An instruction that names a module applies only when the
+printed `modules` list has that module: "With the `plan` module" in this file, and the marks
+`[plan]`, `[repair]`, `[verify]`, `[review]` in [agent-lifecycle.md](references/agent-lifecycle.md).
+The default is every module, which is the 1.0 behavior. Apply every module also when the script
+cannot run. Do not add or drop a module because of the model name, the host, or your own judgment
+of your ability. When the profile reports `direct_engagement: true`, read
+[lean-profile.md](references/lean-profile.md) before `init` or `start`.
+
 ## Start
 
 - Resolve [hexa.py](scripts/hexa.py) relative to this skill. Invoke it with an available Python 3.12+
@@ -31,8 +46,9 @@ material work. Pick the task kind internally: `change` for implementation/design
 
 - Infer reversible details from the repository. Ask only when an unresolved choice materially
   changes the product, scope, architecture, cost, or irreversible consequences.
-- State observable acceptance criteria and take the smallest useful next step. Keep substantial
-  design decisions in existing project documentation; a small fix needs no separate design document.
+- With the `plan` module, state observable acceptance criteria and take the smallest useful next
+  step. Keep substantial design decisions in existing project documentation; a small fix needs no
+  separate design document.
   Use [agent-lifecycle.md](references/agent-lifecycle.md) for substantial design or interrupted work.
 - Route material commands through `<HEXA> run`. Before a host edit, use `<HEXA> policy-check
   --task-id <id> --path <path> --write` so evidence can distinguish your changes from existing work.
@@ -53,6 +69,9 @@ material work. Pick the task kind internally: `change` for implementation/design
 - Checkpoint meaningful milestones or pauses, not every edit. `complete` runs required sensors;
   do not duplicate the full suite immediately beforehand unless a release gate needs it. Use
   additional review only when deterministic checks cannot answer a material acceptance question.
+- When no person supervises the run, a finished milestone or a long turn is not a reason to end
+  the turn: checkpoint it and take the next step. End the turn when the task is complete, the next
+  step needs the user's decision or authorization, or a limit, trip wire, or STOP blocks the work.
 
 - For an explicit text improvement request, repeated failure, or unmet validation, consider the
   [built-in improvement strategy](../../docs/improvement.md) when the project's existing
